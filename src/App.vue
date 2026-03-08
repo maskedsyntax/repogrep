@@ -1,11 +1,23 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch, provide } from 'vue'
 import SnippetInputPane from './components/SnippetInputPane.vue'
 import MatchListPane from './components/MatchListPane.vue'
 import CodePreviewPane from './components/CodePreviewPane.vue'
 import { useAppStore } from './stores/app'
 
 const store = useAppStore()
+
+const theme = ref(localStorage.getItem('repogrep-theme') || 'dark')
+watch(theme, (v) => {
+  document.documentElement.setAttribute('data-theme', v)
+  localStorage.setItem('repogrep-theme', v)
+}, { immediate: true })
+
+function toggleTheme() {
+  theme.value = theme.value === 'dark' ? 'light' : 'dark'
+}
+provide('theme', theme)
+provide('toggleTheme', toggleTheme)
 
 const MIN_PCT = 20
 const MAX_PCT = 60
@@ -73,37 +85,43 @@ const gridStyle = () => ({
 </script>
 
 <template>
-  <div class="app" :style="gridStyle()">
-    <div class="pane-col snippet-col">
-      <SnippetInputPane />
-    </div>
-    <div
-      class="resizer"
-      aria-label="Resize panes"
-      @mousedown="onDividerMouseDown(1, $event)"
-    />
-    <div class="pane-col list-col">
-      <MatchListPane />
-    </div>
-    <div
-      class="resizer"
-      aria-label="Resize panes"
-      @mousedown="onDividerMouseDown(2, $event)"
-    />
-    <div class="pane-col preview-col">
-      <CodePreviewPane
-        :content="store.selectedFileContent"
-        :highlight-text="store.searchQuery"
-        :highlight-case-sensitive="store.caseSensitive"
+  <div class="app-wrap">
+    <div class="app" :style="gridStyle()">
+      <div class="pane-col snippet-col">
+        <SnippetInputPane />
+      </div>
+      <div
+        class="resizer"
+        aria-label="Resize panes"
+        @mousedown="onDividerMouseDown(1, $event)"
       />
+      <div class="pane-col list-col">
+        <MatchListPane />
+      </div>
+      <div
+        class="resizer"
+        aria-label="Resize panes"
+        @mousedown="onDividerMouseDown(2, $event)"
+      />
+      <div class="pane-col preview-col">
+        <CodePreviewPane
+          :content="store.selectedFileContent"
+          :highlight-text="store.searchQuery"
+          :highlight-case-sensitive="store.caseSensitive"
+        />
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.app-wrap {
+  height: 100vh;
+  position: relative;
+}
 .app {
   display: grid;
-  height: 100vh;
+  height: 100%;
   min-height: 0;
   background: var(--bg-base);
   user-select: none;

@@ -1,8 +1,10 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, inject } from 'vue'
 import { useAppStore } from '../stores/app'
 
 const store = useAppStore()
+const theme = inject('theme')
+const toggleTheme = inject('toggleTheme')
 
 onMounted(() => store.loadPaths())
 
@@ -19,9 +21,20 @@ function onKeydown(e) {
     <section class="projects-section">
       <div class="section-head">
         <span class="label">Projects</span>
-        <button type="button" class="btn-add" @click="store.openFolderPicker">
-          Add folder
-        </button>
+        <div class="section-actions">
+          <button
+            type="button"
+            class="btn-icon"
+            :title="theme === 'dark' ? 'Light mode' : 'Dark mode'"
+            @click="toggleTheme"
+          >
+            <span v-if="theme === 'dark'" aria-hidden="true">☀️</span>
+            <span v-else aria-hidden="true">🌙</span>
+          </button>
+          <button type="button" class="btn-add" @click="store.openFolderPicker">
+            Add folder
+          </button>
+        </div>
       </div>
       <ul v-if="store.projectPaths.length" class="path-list">
         <li v-for="p in store.projectPaths" :key="p.path" class="path-item">
@@ -80,6 +93,29 @@ function onKeydown(e) {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 8px;
+}
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-icon {
+  width: 32px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-icon:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
 }
 .label {
   font-size: 11px;

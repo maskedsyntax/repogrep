@@ -9,6 +9,7 @@ Search your project directories for a code snippet. Paste the snippet, pick one 
 - Three panes: snippet input, list of matching files (with repo name and path), code preview. Drag the dividers to resize.
 - Match list: keyboard up/down, click to open. Preview shows full file with your search term highlighted and scrolls to the first match.
 - Many languages supported for search and syntax highlighting (e.g. Rust, Dart, Swift, JS/TS, Python, C/C++, Go, and more).
+- Dark mode (default) with a light/dark toggle in the Projects pane. Preference is saved.
 
 ## Install and run
 
