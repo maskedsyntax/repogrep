@@ -5,13 +5,35 @@ import javascript from 'highlight.js/lib/languages/javascript'
 import typescript from 'highlight.js/lib/languages/typescript'
 import rust from 'highlight.js/lib/languages/rust'
 import python from 'highlight.js/lib/languages/python'
-import vue from 'highlight.js/lib/languages/xml'
+import xml from 'highlight.js/lib/languages/xml'
 import json from 'highlight.js/lib/languages/json'
 import bash from 'highlight.js/lib/languages/bash'
 import css from 'highlight.js/lib/languages/css'
-import xml from 'highlight.js/lib/languages/xml'
 import markdown from 'highlight.js/lib/languages/markdown'
 import dart from 'highlight.js/lib/languages/dart'
+import swift from 'highlight.js/lib/languages/swift'
+import cpp from 'highlight.js/lib/languages/cpp'
+import c from 'highlight.js/lib/languages/c'
+import csharp from 'highlight.js/lib/languages/csharp'
+import scala from 'highlight.js/lib/languages/scala'
+import go from 'highlight.js/lib/languages/go'
+import java from 'highlight.js/lib/languages/java'
+import kotlin from 'highlight.js/lib/languages/kotlin'
+import ruby from 'highlight.js/lib/languages/ruby'
+import sql from 'highlight.js/lib/languages/sql'
+import r from 'highlight.js/lib/languages/r'
+import php from 'highlight.js/lib/languages/php'
+import scss from 'highlight.js/lib/languages/scss'
+import less from 'highlight.js/lib/languages/less'
+import yaml from 'highlight.js/lib/languages/yaml'
+import lua from 'highlight.js/lib/languages/lua'
+import erlang from 'highlight.js/lib/languages/erlang'
+import haskell from 'highlight.js/lib/languages/haskell'
+import fsharp from 'highlight.js/lib/languages/fsharp'
+import elixir from 'highlight.js/lib/languages/elixir'
+import ocaml from 'highlight.js/lib/languages/ocaml'
+import vim from 'highlight.js/lib/languages/vim'
+import lisp from 'highlight.js/lib/languages/lisp'
 import 'highlight.js/styles/github.css'
 import { useAppStore } from '../stores/app'
 
@@ -19,14 +41,35 @@ hljs.registerLanguage('javascript', javascript)
 hljs.registerLanguage('typescript', typescript)
 hljs.registerLanguage('rust', rust)
 hljs.registerLanguage('python', python)
-hljs.registerLanguage('vue', vue)
+hljs.registerLanguage('xml', xml)
 hljs.registerLanguage('json', json)
 hljs.registerLanguage('bash', bash)
 hljs.registerLanguage('css', css)
-hljs.registerLanguage('html', xml)
-hljs.registerLanguage('xml', xml)
 hljs.registerLanguage('markdown', markdown)
 hljs.registerLanguage('dart', dart)
+hljs.registerLanguage('swift', swift)
+hljs.registerLanguage('cpp', cpp)
+hljs.registerLanguage('c', c)
+hljs.registerLanguage('csharp', csharp)
+hljs.registerLanguage('scala', scala)
+hljs.registerLanguage('go', go)
+hljs.registerLanguage('java', java)
+hljs.registerLanguage('kotlin', kotlin)
+hljs.registerLanguage('ruby', ruby)
+hljs.registerLanguage('sql', sql)
+hljs.registerLanguage('r', r)
+hljs.registerLanguage('php', php)
+hljs.registerLanguage('scss', scss)
+hljs.registerLanguage('less', less)
+hljs.registerLanguage('yaml', yaml)
+hljs.registerLanguage('lua', lua)
+hljs.registerLanguage('erlang', erlang)
+hljs.registerLanguage('haskell', haskell)
+hljs.registerLanguage('fsharp', fsharp)
+hljs.registerLanguage('elixir', elixir)
+hljs.registerLanguage('ocaml', ocaml)
+hljs.registerLanguage('vim', vim)
+hljs.registerLanguage('lisp', lisp)
 
 const props = defineProps({
   content: { type: String, default: '' },
@@ -36,11 +79,20 @@ const props = defineProps({
 const store = useAppStore()
 const preRef = ref(null)
 
+// Extension → Highlight.js language (covers all CODE_EXTENSIONS from backend + common extras)
+const EXT_LANG = {
+  rs: 'rust', vue: 'xml', js: 'javascript', ts: 'typescript', jsx: 'javascript', tsx: 'typescript',
+  mjs: 'javascript', cjs: 'javascript', dart: 'dart', py: 'python', go: 'go', rb: 'ruby',
+  java: 'java', kt: 'kotlin', kts: 'kotlin', c: 'c', h: 'c', cpp: 'cpp', hpp: 'cpp', cc: 'cpp', cxx: 'cpp',
+  cs: 'csharp', php: 'php', swift: 'swift', scala: 'scala', r: 'r', sql: 'sql', sh: 'bash', bash: 'bash', zsh: 'bash',
+  html: 'xml', htm: 'xml', css: 'css', scss: 'scss', sass: 'scss', less: 'less',
+  json: 'json', yaml: 'yaml', yml: 'yaml', toml: 'yaml', xml: 'xml', md: 'markdown', markdown: 'markdown',
+  lua: 'lua', vim: 'vim', el: 'lisp', ex: 'elixir', exs: 'elixir', erl: 'erlang', hs: 'haskell', fs: 'fsharp', fsx: 'fsharp', ml: 'ocaml', mli: 'ocaml',
+}
 const lang = computed(() => {
   const path = store.selectedFilePath
   const ext = path?.split('.').pop()?.toLowerCase() ?? ''
-  const map = { rs: 'rust', vue: 'vue', js: 'javascript', ts: 'typescript', dart: 'dart', py: 'python', json: 'json', sh: 'bash', md: 'markdown', html: 'html', css: 'css' }
-  return map[ext] || 'plaintext'
+  return EXT_LANG[ext] || 'plaintext'
 })
 
 const highlighted = computed(() => {
