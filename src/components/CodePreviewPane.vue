@@ -74,6 +74,7 @@ hljs.registerLanguage('lisp', lisp)
 const props = defineProps({
   content: { type: String, default: '' },
   highlightText: { type: String, default: '' },
+  highlightCaseSensitive: { type: Boolean, default: false },
 })
 
 const store = useAppStore()
@@ -117,7 +118,8 @@ function highlightQuery(html) {
   const q = props.highlightText?.trim()
   if (!q) return html
   const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const re = new RegExp(`(${esc})`, 'gi')
+  const flags = props.highlightCaseSensitive ? 'g' : 'gi'
+  const re = new RegExp(`(${esc})`, flags)
   return html.replace(re, '<mark class="search-hit">$1</mark>')
 }
 

@@ -7,6 +7,10 @@ const store = useAppStore()
 
 const list = computed(() => store.results)
 
+function matchCount(r) {
+  return r.match_count != null ? r.match_count : (r.lines?.length ?? 0)
+}
+
 const { list: virtualList, containerProps, wrapperProps } = useVirtualList(list, {
   itemHeight: 52,
   overscan: 10,
@@ -59,7 +63,7 @@ onUnmounted(() => {
         >
           <span class="root-hint">{{ r.root_hint }}</span>
           <span class="relative-path">{{ r.relative_path }}</span>
-          <span class="line-info">{{ r.lines.length }} match{{ r.lines.length !== 1 ? 'es' : '' }}</span>
+          <span class="line-info">{{ matchCount(r) }} match{{ matchCount(r) !== 1 ? 'es' : '' }}</span>
         </div>
       </div>
     </div>

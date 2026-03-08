@@ -102,6 +102,7 @@ fn remove_project_path(app: AppHandle, path: String) -> Result<(), String> {
 struct SearchSnippetArgs {
     query: String,
     exact: bool,
+    #[serde(alias = "caseSensitive")]
     case_sensitive: bool,
     paths_override: Option<Vec<String>>,
 }

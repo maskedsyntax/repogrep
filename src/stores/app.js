@@ -5,6 +5,7 @@ import { ref, computed } from 'vue'
 export const useAppStore = defineStore('app', () => {
   const projectPaths = ref([])
   const searchQuery = ref('')
+  const caseSensitive = ref(false)
   const results = ref([])
   const selectedIndex = ref(0)
   const selectedFileContent = ref('')
@@ -78,7 +79,7 @@ export const useAppStore = defineStore('app', () => {
         args: {
           query: q,
           exact: true,
-          caseSensitive: false,
+          caseSensitive: caseSensitive.value,
           pathsOverride: pathsToSearch,
         },
       })
@@ -121,6 +122,7 @@ export const useAppStore = defineStore('app', () => {
   return {
     projectPaths,
     searchQuery,
+    caseSensitive,
     results,
     selectedIndex,
     selectedResult,

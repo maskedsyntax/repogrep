@@ -20,7 +20,10 @@ pub struct MatchResult {
     pub file_path: String,
     pub relative_path: String,
     pub root_hint: String,
+    /// Line numbers that contain at least one match (1-based).
     pub lines: Vec<u32>,
+    /// Total number of occurrences of the query in this file (respects case_sensitive).
+    pub match_count: u32,
 }
 
 fn is_code_file(path: &Path) -> bool {
@@ -101,16 +104,20 @@ pub fn search(
         .filter_map(|c| {
             let content = std::fs::read_to_string(&c.path).ok()?;
             let mut lines = Vec::new();
+            let mut match_count: u32 = 0;
             for (i, line) in content.lines().enumerate() {
                 let line_num = (i + 1) as u32;
-                let found = if case_sensitive {
-                    line.contains(&query)
+                let (found, count) = if case_sensitive {
+                    let n = line.matches(&query).count() as u32;
+                    (n > 0, n)
                 } else {
-                    line.to_lowercase()
-                        .contains(query_lower.as_deref().unwrap_or(&query))
+                    let lower = query_lower.as_ref().unwrap();
+                    let n = line.to_lowercase().matches(lower.as_str()).count() as u32;
+                    (n > 0, n)
                 };
                 if found {
                     lines.push(line_num);
+                    match_count += count;
                 }
             }
             if lines.is_empty() {
@@ -127,6 +134,7 @@ pub fn search(
                 relative_path: relative,
                 root_hint: c.root_hint.clone(),
                 lines,
+                match_count,
             })
         })
         .collect();

@@ -47,6 +47,14 @@ function onKeydown(e) {
         rows="8"
         @keydown="onKeydown"
       />
+      <label class="option-row">
+        <input
+          v-model="store.caseSensitive"
+          type="checkbox"
+          class="checkbox"
+        />
+        <span class="option-label">Case sensitive</span>
+      </label>
       <button type="button" class="btn-search" @click="store.search">
         Search
       </button>
@@ -169,6 +177,24 @@ function onKeydown(e) {
 }
 .textarea::placeholder {
   color: var(--text-muted);
+}
+.option-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.option-label {
+  user-select: none;
 }
 .btn-search {
   margin-top: 12px;

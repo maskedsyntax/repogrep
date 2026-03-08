@@ -94,6 +94,7 @@ const gridStyle = () => ({
       <CodePreviewPane
         :content="store.selectedFileContent"
         :highlight-text="store.searchQuery"
+        :highlight-case-sensitive="store.caseSensitive"
       />
     </div>
   </div>
