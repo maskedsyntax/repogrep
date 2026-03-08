@@ -9,21 +9,25 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Repogrep – Local Code Snippet Manager",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 800,
-        "minHeight": 600
-      }
-    ],
     "security": {
+      "capabilities": ["default"],
       "assetProtocol": {
         "enable": true,
         "scope": ["**"]
       }
-    }
+    },
+    "windows": [
+      {
+        "title": "repogrep – Local Code Search",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "visible": true,
+        "center": true,
+        "focus": true
+      }
+    ]
   },
   "plugins": {
     "shell": {

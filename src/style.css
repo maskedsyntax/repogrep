@@ -1,15 +1,14 @@
 :root {
-  --bg-base: #fafafa;
+  --bg-base: #f8fafc;
   --bg-elevated: #ffffff;
   --bg-hover: #f1f5f9;
   --border: #e2e8f0;
-  --text: #1e293b;
+  --text: #0f172a;
   --text-muted: #64748b;
-  --accent: #0f766e;
+  --accent: #0d9488;
   --accent-subtle: #ccfbf1;
-  --radius: 8px;
-  --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'Fira Code', 'SF Mono', monospace;
 }
 
 [data-theme="dark"] {
