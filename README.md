@@ -1,45 +1,35 @@
-# Repogrep
+# repogrep
 
-Local Code Snippet Manager — a cross-platform desktop app for managing, tagging, and searching code snippets. Built with Tauri (Rust) and Vue 3.
+Search your project directories for a code snippet. Paste the snippet, pick one or more folders, and see every file that contains it.
 
 ## Features
 
-- **Snippet management** — Add, edit, delete snippets with title, code, language, and tags
-- **Full-text search** — Fast search with SQLite FTS5; filter by tags
-- **Index directories** — Scan folders for code files (e.g. `.rs`, `.js`, `.py`) and index as snippets
-- **Import / Export** — Paste from clipboard, export to JSON
-- **Syntax highlighting** — Preview with Highlight.js
-- **Dark / light theme** — Toggle in the header
-- **Keyboard shortcut** — Press `/` to focus search
+- Add one or more project folders (native dialog). Paths are saved in app data.
+- Paste a snippet and search: exact match across all added paths. Enter or Search button.
+- Three panes: snippet input, list of matching files (with repo name and path), code preview. Drag the dividers to resize.
+- Match list: keyboard up/down, click to open. Preview shows full file with your search term highlighted and scrolls to the first match.
+- Many languages supported for search and syntax highlighting (e.g. Rust, Dart, Swift, JS/TS, Python, C/C++, Go, and more).
 
-## Setup
+## Install and run
 
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) (v18+)
-- [Rust](https://rustup.rs/)
-- Linux: WebKitGTK and other [Tauri dependencies](https://v2.tauri.app/start/linux/)
-
-### Install and run
+**Prerequisites:** Node.js 18+, Rust, and on Linux the [Tauri dependencies](https://v2.tauri.app/start/linux/) (e.g. WebKitGTK).
 
 ```bash
 npm install
 npm run tauri dev
 ```
 
-### Build for production
+**Production build:**
 
 ```bash
 npm run tauri build
 ```
 
-Installers will be in `src-tauri/target/release/bundle/`.
+Binaries and installers end up in `src-tauri/target/release/bundle/`.
 
-## Project structure
+## Where your data lives
 
-- `src/` — Vue 3 frontend (Vite)
-- `src-tauri/` — Rust backend and Tauri config
-- Snippets and DB are stored in your OS app data directory (e.g. `~/.local/share/com.repogrep.app/` on Linux).
+Project paths are stored in your OS app data directory (e.g. on Linux: `~/.local/share/com.repogrep.app/`). No account, no cloud.
 
 ## License
 
