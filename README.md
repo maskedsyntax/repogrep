@@ -1,37 +1,33 @@
 # repogrep
 
-Search your project directories for a code snippet. Paste the snippet, pick one or more folders, and see every file that contains it.
+**Search all your codebases at once.**
 
-## Features
+A lightning-fast, local-first code search tool for developers. No indexing, no cloud, just your code and raw performance.
 
-- Add one or more project folders (native dialog). Paths are saved in app data.
-- Paste a snippet and search: exact match across all added paths. Enter or Search button. Option to match case-sensitive.
-- Three panes: snippet input, list of matching files (with repo name and path), code preview. Drag the dividers to resize.
-- Match list: keyboard up/down, click to open. Preview shows full file with your search term highlighted and scrolls to the first match.
-- Many languages supported for search and syntax highlighting (e.g. Rust, Dart, Swift, JS/TS, Python, C/C++, Go, and more).
-- Dark mode (default) with a light/dark toggle in the Projects pane. Preference is saved.
+## The Philosophy
 
-## Install and run
+We believe that code search should be simple, private, and incredibly fast. repogrep doesn't use heavy database indexing; instead, it leverages modern hardware and Rust's speed to scan your code in real-time. 
 
-**Prerequisites:** Node.js 18+, Rust, and on Linux the [Tauri dependencies](https://v2.tauri.app/start/linux/) (e.g. WebKitGTK).
+Whether you're looking for where an API is used across multiple services or refactoring a shared utility, repogrep gives you the results you need without the overhead.
 
-```bash
-npm install
-npm run tauri dev
-```
+## Core Features
 
-**Production build:**
+### Fast Native Search
+Built with Rust for maximum performance. Search through thousands of files in milliseconds without pre-indexing. It uses parallelized scanning to make sure you're never waiting on your tools.
 
-```bash
-npm run tauri build
-```
+### Local & Private
+Your code never leaves your machine. No cloud processing, no telemetry, no tracking. Just a powerful local utility that respects your intellectual property and privacy.
 
-Binaries and installers end up in `src-tauri/target/release/bundle/`.
+### Multi-Repo Search
+Add multiple project folders and search across all of them simultaneously. Perfect for microservices, monorepos, or just managing a large collection of independent projects.
 
-## Where your data lives
+### Precise Results
+Find exact code snippets, use Regular Expressions for complex patterns, and filter out noise with custom ignore rules. The three-pane interface gives you instant context with syntax-highlighted previews.
 
-Project paths are stored in your OS app data directory (e.g. on Linux: `~/.local/share/com.repogrep.app/`). No account, no cloud.
+## Built with
+- **Rust** and **Tauri** for a high-performance backend.
+- **Vue 3** for a responsive, modern interface.
+- **Rayon** for parallelized file scanning.
 
-## License
-
-MIT
+---
+© 2026 Repogrep Team. MIT Licensed.
