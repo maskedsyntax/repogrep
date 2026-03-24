@@ -30,4 +30,4 @@ Find exact code snippets, use Regular Expressions for complex patterns, and filt
 - **Rayon** for parallelized file scanning.
 
 ---
-© 2026 Repogrep Team. MIT Licensed.
+MIT Licensed.
