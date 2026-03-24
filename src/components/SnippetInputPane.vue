@@ -1,12 +1,23 @@
 <script setup>
-import { onMounted, inject } from 'vue'
+import { ref, onMounted, inject } from 'vue'
+import { Sun, Moon, Plus, X } from 'lucide-vue-next'
 import { useAppStore } from '../stores/app'
 
 const store = useAppStore()
 const theme = inject('theme')
 const toggleTheme = inject('toggleTheme')
+const newPattern = ref('')
 
-onMounted(() => store.loadPaths())
+onMounted(() => {
+  store.loadPaths()
+  store.loadIgnores()
+})
+
+function handleAddIgnore() {
+  if (!newPattern.value.trim()) return
+  store.addIgnorePattern(newPattern.value.trim())
+  newPattern.value = ''
+}
 
 function onKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -28,8 +39,8 @@ function onKeydown(e) {
             :title="theme === 'dark' ? 'Light mode' : 'Dark mode'"
             @click="toggleTheme"
           >
-            <span v-if="theme === 'dark'" aria-hidden="true">☀️</span>
-            <span v-else aria-hidden="true">🌙</span>
+            <Sun v-if="theme === 'dark'" :size="16" />
+            <Moon v-else :size="16" />
           </button>
           <button type="button" class="btn-add" @click="store.openFolderPicker">
             Add folder
@@ -51,6 +62,39 @@ function onKeydown(e) {
       </ul>
       <p v-else class="hint">No projects. Add a folder to search.</p>
     </section>
+    <section class="ignores-section">
+      <div class="section-head">
+        <span class="label">Ignored Patterns</span>
+        <span class="count-badge" v-if="store.ignorePatterns.length">{{ store.ignorePatterns.length }}</span>
+      </div>
+      <div class="add-ignore-row">
+        <div class="input-group">
+          <input
+            v-model="newPattern"
+            type="text"
+            class="input-mini"
+            placeholder="Add pattern (e.g. *.log)..."
+            @keydown.enter.stop="handleAddIgnore"
+          />
+          <button type="button" class="btn-add-inline" title="Add pattern" @click="handleAddIgnore">
+            <Plus :size="14" />
+          </button>
+        </div>
+      </div>
+      <div v-if="store.ignorePatterns.length" class="ignore-tags">
+        <div v-for="pat in store.ignorePatterns" :key="pat" class="tag">
+          <span class="tag-text">{{ pat }}</span>
+          <button
+            type="button"
+            class="tag-remove"
+            title="Remove"
+            @click="store.removeIgnorePattern(pat)"
+          >
+            <X :size="10" />
+          </button>
+        </div>
+      </div>
+    </section>
     <section class="search-section">
       <label class="label">Snippet to search</label>
       <textarea
@@ -60,14 +104,24 @@ function onKeydown(e) {
         rows="8"
         @keydown="onKeydown"
       />
-      <label class="option-row">
-        <input
-          v-model="store.caseSensitive"
-          type="checkbox"
-          class="checkbox"
-        />
-        <span class="option-label">Case sensitive</span>
-      </label>
+      <div class="options-grid">
+        <label class="option-row">
+          <input
+            v-model="store.caseSensitive"
+            type="checkbox"
+            class="checkbox"
+          />
+          <span class="option-label">Case sensitive</span>
+        </label>
+        <label class="option-row">
+          <input
+            v-model="store.isRegex"
+            type="checkbox"
+            class="checkbox"
+          />
+          <span class="option-label">Use Regex</span>
+        </label>
+      </div>
       <button type="button" class="btn-search" @click="store.search">
         Search
       </button>
@@ -86,6 +140,105 @@ function onKeydown(e) {
   flex-shrink: 0;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
+}
+.ignores-section {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.count-badge {
+  font-size: 10px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.input-group {
+  display: flex;
+  align-items: center;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding-right: 4px;
+  transition: border-color 0.15s;
+}
+.input-group:focus-within {
+  border-color: var(--accent);
+}
+.input-mini {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  min-width: 0;
+}
+.input-mini:focus {
+  outline: none;
+}
+.btn-add-inline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: background 0.15s, color 0.15s;
+}
+.btn-add-inline:hover {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+.ignore-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  max-height: 100px;
+  overflow-y: auto;
+}
+.tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  font-size: 11px;
+}
+.tag-text {
+  color: var(--text);
+  font-family: var(--font-mono);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tag-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.12s;
+}
+.tag-remove:hover {
+  background: #fee2e2;
+  color: #ef4444;
+  border-color: #fecaca;
 }
 .section-head {
   display: flex;
@@ -106,12 +259,12 @@ function onKeydown(e) {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  color: var(--text);
   background: transparent;
   border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 .btn-icon:hover {
   background: var(--bg-hover);
@@ -213,6 +366,12 @@ function onKeydown(e) {
 }
 .textarea::placeholder {
   color: var(--text-muted);
+}
+.options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
 }
 .option-row {
   display: flex;

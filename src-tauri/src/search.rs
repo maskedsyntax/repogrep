@@ -1,5 +1,6 @@
 // Parallel file scan: walkdir + rayon. Code-like extensions only.
 
+use globset::{Glob, GlobSetBuilder};
 use rayon::prelude::*;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -13,6 +14,7 @@ const CODE_EXTENSIONS: &[&str] = &[
     "html", "htm", "css", "scss", "sass", "less",
     "json", "yaml", "yml", "toml", "xml", "md", "markdown",
     "lua", "vim", "el", "ex", "exs", "erl", "hs", "fs", "fsx", "ml", "mli",
+    "txt", "log", "conf", "ini", "env", "text", "sh", "bash", "zsh", "pl", "pyw",
 ];
 
 #[derive(Debug, Clone, Serialize)]
@@ -27,10 +29,22 @@ pub struct MatchResult {
 }
 
 fn is_code_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .map(|e| CODE_EXTENSIONS.contains(&e.to_lowercase().as_str()))
-        .unwrap_or(false)
+    // Check extension
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        if CODE_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
+            return true;
+        }
+    }
+    
+    // Check for common files without extensions
+    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+        let n = name.to_lowercase();
+        if n == "license" || n == "dockerfile" || n == "makefile" || n.starts_with(".env") {
+            return true;
+        }
+    }
+
+    false
 }
 
 fn normalize_path(path: &Path) -> String {
@@ -43,16 +57,37 @@ struct FileCandidate {
     root_canonical: PathBuf,
 }
 
+use regex::RegexBuilder;
+
 pub fn search(
     query: &str,
     _exact: bool,
     case_sensitive: bool,
+    is_regex: bool,
     root_paths: &[String],
+    ignore_patterns: &[String],
 ) -> anyhow::Result<Vec<MatchResult>> {
-    let query_lower = if case_sensitive {
-        None
+    let mut ignore_builder = GlobSetBuilder::new();
+    for pat in ignore_patterns {
+        ignore_builder.add(Glob::new(pat).map_err(|e| anyhow::anyhow!("Invalid ignore pattern: {}", e))?);
+    }
+    let ignore_set = ignore_builder.build()?;
+
+    let re = if is_regex {
+        Some(
+            RegexBuilder::new(query)
+                .case_insensitive(!case_sensitive)
+                .build()
+                .map_err(|e| anyhow::anyhow!("Invalid regex: {}", e))?,
+        )
     } else {
+        None
+    };
+
+    let query_lower = if !is_regex && !case_sensitive {
         Some(query.to_lowercase())
+    } else {
+        None
     };
     let query = query.to_string();
 
@@ -74,14 +109,22 @@ pub fn search(
             .follow_links(false)
             .into_iter()
             .filter_entry(|e| {
+                // Never skip the root directory itself
+                if e.depth() == 0 {
+                    return true;
+                }
                 let p = e.path();
+                let rel_path_buf = p.strip_prefix(&root_abs).unwrap_or(p);
+                let rel_path = normalize_path(rel_path_buf);
+                let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                
+                // Check if either the full relative path or the specific filename matches
+                if ignore_set.is_match(&rel_path) || ignore_set.is_match(name) {
+                    return false;
+                }
+
                 if p.is_dir() {
-                    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
                     !name.starts_with('.')
-                        && name != "node_modules"
-                        && name != "target"
-                        && name != "build"
-                        && name != "__pycache__"
                 } else {
                     is_code_file(p)
                 }
@@ -107,7 +150,10 @@ pub fn search(
             let mut match_count: u32 = 0;
             for (i, line) in content.lines().enumerate() {
                 let line_num = (i + 1) as u32;
-                let (found, count) = if case_sensitive {
+                let (found, count) = if let Some(ref r) = re {
+                    let n = r.find_iter(line).count() as u32;
+                    (n > 0, n)
+                } else if case_sensitive {
                     let n = line.matches(&query).count() as u32;
                     (n > 0, n)
                 } else {
@@ -166,13 +212,13 @@ mod tests {
         let roots = vec![root];
 
         // Search "amphi" (e.g. in README.md)
-        let out = search("amphi", true, false, &roots).unwrap();
+        let out = search("amphi", true, false, false, &roots, &[]).unwrap();
         assert!(!out.is_empty(), "search 'amphi' should find files (e.g. README.md) in {}", roots[0]);
         let has_readme = out.iter().any(|r| r.relative_path.contains("README") || r.file_path.contains("README"));
         assert!(has_readme, "expected at least README.md in results; got {:?}", out.iter().map(|r| r.relative_path.as_str()).collect::<Vec<_>>());
 
         // Search "import" (common in code)
-        let out2 = search("import", true, false, &roots).unwrap();
+        let out2 = search("import", true, false, false, &roots, &[]).unwrap();
         assert!(!out2.is_empty(), "search 'import' should find files in {}", roots[0]);
     }
 }

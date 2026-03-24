@@ -75,6 +75,7 @@ const props = defineProps({
   content: { type: String, default: '' },
   highlightText: { type: String, default: '' },
   highlightCaseSensitive: { type: Boolean, default: false },
+  highlightIsRegex: { type: Boolean, default: false },
 })
 
 const store = useAppStore()
@@ -117,10 +118,18 @@ function escapeHtml(s) {
 function highlightQuery(html) {
   const q = props.highlightText?.trim()
   if (!q) return html
-  const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  let esc = q
+  if (!props.highlightIsRegex) {
+    esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  }
   const flags = props.highlightCaseSensitive ? 'g' : 'gi'
-  const re = new RegExp(`(${esc})`, flags)
-  return html.replace(re, '<mark class="search-hit">$1</mark>')
+  try {
+    const re = new RegExp(`(${esc})`, flags)
+    return html.replace(re, '<mark class="search-hit">$1</mark>')
+  } catch (e) {
+    // If invalid regex, just return original html
+    return html
+  }
 }
 
 const displayHtml = computed(() => highlightQuery(highlighted.value))

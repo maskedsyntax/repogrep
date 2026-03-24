@@ -4,8 +4,10 @@ import { ref, computed } from 'vue'
 
 export const useAppStore = defineStore('app', () => {
   const projectPaths = ref([])
+  const ignorePatterns = ref([])
   const searchQuery = ref('')
   const caseSensitive = ref(false)
+  const isRegex = ref(false)
   const results = ref([])
   const selectedIndex = ref(0)
   const selectedFileContent = ref('')
@@ -41,6 +43,33 @@ export const useAppStore = defineStore('app', () => {
       await loadPaths()
     } catch (e) {
       console.error('removeProjectPath', e)
+    }
+  }
+
+  async function loadIgnores() {
+    try {
+      ignorePatterns.value = await invoke('get_ignore_patterns')
+    } catch (e) {
+      console.error('loadIgnores', e)
+    }
+  }
+
+  async function addIgnorePattern(pattern) {
+    if (!pattern?.trim()) return
+    try {
+      await invoke('add_ignore_pattern', { pattern: pattern.trim() })
+      await loadIgnores()
+    } catch (e) {
+      console.error('addIgnorePattern', e)
+    }
+  }
+
+  async function removeIgnorePattern(pattern) {
+    try {
+      await invoke('remove_ignore_pattern', { pattern })
+      await loadIgnores()
+    } catch (e) {
+      console.error('removeIgnorePattern', e)
     }
   }
 
@@ -80,6 +109,7 @@ export const useAppStore = defineStore('app', () => {
           query: q,
           exact: true,
           caseSensitive: caseSensitive.value,
+          isRegex: isRegex.value,
           pathsOverride: pathsToSearch,
         },
       })
@@ -121,8 +151,10 @@ export const useAppStore = defineStore('app', () => {
 
   return {
     projectPaths,
+    ignorePatterns,
     searchQuery,
     caseSensitive,
+    isRegex,
     results,
     selectedIndex,
     selectedResult,
@@ -132,6 +164,9 @@ export const useAppStore = defineStore('app', () => {
     loadPaths,
     addProjectPath,
     removeProjectPath,
+    loadIgnores,
+    addIgnorePattern,
+    removeIgnorePattern,
     openFolderPicker,
     search,
     selectResult,

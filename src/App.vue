@@ -108,6 +108,7 @@ const gridStyle = () => ({
           :content="store.selectedFileContent"
           :highlight-text="store.searchQuery"
           :highlight-case-sensitive="store.caseSensitive"
+          :highlight-is-regex="store.isRegex"
         />
       </div>
     </div>

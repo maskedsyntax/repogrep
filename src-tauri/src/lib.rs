@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 const PATHS_FILENAME: &str = "repogrep_paths.json";
+const IGNORES_FILENAME: &str = "repogrep_ignores.json";
 
 /// Strip file:// or file:/// prefix so Path::new(...).is_dir() works.
 fn normalize_path_string(s: &str) -> String {
@@ -27,6 +28,50 @@ fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
 
 fn paths_file(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app_data_dir(app)?.join(PATHS_FILENAME))
+}
+
+fn ignores_file(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app_data_dir(app)?.join(IGNORES_FILENAME))
+}
+
+#[tauri::command]
+fn get_ignore_patterns(app: AppHandle) -> Result<Vec<String>, String> {
+    let pf = ignores_file(&app)?;
+    if pf.exists() {
+        let s = std::fs::read_to_string(&pf).map_err(|e| e.to_string())?;
+        Ok(serde_json::from_str(&s).unwrap_or_default())
+    } else {
+        // Default ignores if no file exists
+        Ok(vec![
+            "node_modules".to_string(),
+            "target".to_string(),
+            "build".to_string(),
+            ".git".to_string(),
+            "__pycache__".to_string(),
+        ])
+    }
+}
+
+#[tauri::command]
+fn add_ignore_pattern(app: AppHandle, pattern: String) -> Result<(), String> {
+    let mut list = get_ignore_patterns(app.clone())?;
+    if !list.contains(&pattern) {
+        list.push(pattern);
+        let pf = ignores_file(&app)?;
+        std::fs::write(&pf, serde_json::to_string_pretty(&list).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_ignore_pattern(app: AppHandle, pattern: String) -> Result<(), String> {
+    let list = get_ignore_patterns(app.clone())?;
+    let new_list: Vec<String> = list.into_iter().filter(|p| p != &pattern).collect();
+    let pf = ignores_file(&app)?;
+    std::fs::write(&pf, serde_json::to_string_pretty(&new_list).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -104,6 +149,8 @@ struct SearchSnippetArgs {
     exact: bool,
     #[serde(alias = "caseSensitive")]
     case_sensitive: bool,
+    #[serde(alias = "isRegex")]
+    is_regex: bool,
     paths_override: Option<Vec<String>>,
 }
 
@@ -125,8 +172,10 @@ async fn search_snippet(args: SearchSnippetArgs, app: AppHandle) -> Result<Vec<M
     let paths: Vec<String> = paths.into_iter().map(|p| normalize_path_string(&p)).collect();
     let q = args.query.trim().to_string();
     let case_sensitive = args.case_sensitive;
+    let is_regex = args.is_regex;
     let exact = args.exact;
-    tokio::task::spawn_blocking(move || search::search(&q, exact, case_sensitive, &paths))
+    let ignores = get_ignore_patterns(app.clone())?;
+    tokio::task::spawn_blocking(move || search::search(&q, exact, case_sensitive, is_regex, &paths, &ignores))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
@@ -151,6 +200,9 @@ pub fn run() {
             get_project_paths,
             add_project_path,
             remove_project_path,
+            get_ignore_patterns,
+            add_ignore_pattern,
+            remove_ignore_pattern,
             search_snippet,
             read_file_content,
         ])
