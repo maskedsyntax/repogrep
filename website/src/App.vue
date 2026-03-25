@@ -162,13 +162,13 @@ onMounted(() => {
 }
 
 .logo-img {
-  height: 48px;
-  width: 48px;
+  height: 32px;
+  width: 32px;
   object-fit: contain;
 }
 
 .logo-text {
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   font-weight: 800;
   letter-spacing: -0.025em;
   color: var(--accent);
