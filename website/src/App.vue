@@ -168,8 +168,9 @@ onMounted(() => {
 }
 
 .logo-text {
+  font-family: 'Space Mono', monospace;
   font-size: 1.75rem;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.025em;
   color: var(--accent);
 }
@@ -313,8 +314,9 @@ onMounted(() => {
 }
 
 .logo-text-small {
+  font-family: 'Space Mono', monospace;
   font-size: 1.25rem;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--accent);
 }
 
