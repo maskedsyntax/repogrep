@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { Sun, Moon } from 'lucide-vue-next'
+import logoUrl from './assets/logo.png'
 
 const isDark = ref(false)
 
@@ -22,7 +23,10 @@ onMounted(() => {
     <!-- Navbar -->
     <nav class="nav">
       <div class="container nav-content">
-        <div class="logo">repogrep</div>
+        <div class="logo-wrapper">
+          <img :src="logoUrl" alt="repogrep" class="logo-img" />
+          <span class="logo-text">repogrep</span>
+        </div>
         <div class="nav-links">
           <a href="#features">Features</a>
           <a href="#about">About</a>
@@ -112,7 +116,10 @@ onMounted(() => {
     <footer class="footer">
       <div class="container footer-content">
         <div class="footer-left">
-          <span class="logo-small">repogrep</span>
+          <div class="logo-wrapper-small">
+            <img :src="logoUrl" alt="repogrep" class="logo-img-small" />
+            <span class="logo-text-small">repogrep</span>
+          </div>
           <p>© 2026 Repogrep Team. MIT Licensed.</p>
         </div>
         <div class="footer-links">
@@ -148,8 +155,20 @@ onMounted(() => {
   width: 100%;
 }
 
-.logo {
-  font-size: 1.5rem;
+.logo-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.logo-img {
+  height: 48px;
+  width: 48px;
+  object-fit: contain;
+}
+
+.logo-text {
+  font-size: 1.75rem;
   font-weight: 800;
   letter-spacing: -0.025em;
   color: var(--accent);
@@ -280,12 +299,23 @@ onMounted(() => {
   align-items: center;
 }
 
-.logo-small {
+.logo-wrapper-small {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.logo-img-small {
+  height: 32px;
+  width: 32px;
+  object-fit: contain;
+}
+
+.logo-text-small {
   font-size: 1.25rem;
   font-weight: 800;
   color: var(--accent);
-  margin-bottom: 0.5rem;
-  display: block;
 }
 
 .footer-left p {
