@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import { Sun, Moon } from 'lucide-vue-next'
 
 const isDark = ref(false)
 
@@ -27,8 +28,8 @@ onMounted(() => {
           <a href="#about">About</a>
           <a href="https://github.com/maskedsyntax/repogrep" class="github-link">GitHub</a>
           <button class="theme-toggle" @click="toggleTheme" :title="isDark ? 'Switch to Light' : 'Switch to Dark'">
-            <span v-if="isDark">☀️</span>
-            <span v-else>🌙</span>
+            <Sun v-if="isDark" :size="20" />
+            <Moon v-else :size="20" />
           </button>
         </div>
       </div>
@@ -177,7 +178,13 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
+  color: var(--accent);
+  transition: var(--transition);
+}
+
+.theme-toggle:hover {
+  background: var(--border);
+  color: var(--text);
 }
 
 /* Hero */
