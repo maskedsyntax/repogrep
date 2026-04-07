@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, nextTick, computed } from 'vue'
+import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
 import hljs from 'highlight.js/lib/core'
 import javascript from 'highlight.js/lib/languages/javascript'
 import typescript from 'highlight.js/lib/languages/typescript'
@@ -80,6 +80,14 @@ const props = defineProps({
 
 const store = useAppStore()
 const preRef = ref(null)
+const codeRef = ref(null)
+const currentMatchIndex = ref(-1)
+const matchCount = ref(0)
+const lineCount = computed(() => {
+  if (!props.content) return 1
+  return props.content.split('\n').length
+})
+const lineNumberItems = computed(() => Array.from({ length: lineCount.value }, (_, i) => i + 1))
 
 // Extension → Highlight.js language (covers all CODE_EXTENSIONS from backend + common extras)
 const EXT_LANG = {
@@ -115,35 +123,170 @@ function escapeHtml(s) {
   return div.innerHTML
 }
 
-function highlightQuery(html) {
+const displayHtml = computed(() => highlighted.value)
+
+function getQueryRegex() {
   const q = props.highlightText?.trim()
-  if (!q) return html
-  let esc = q
+  if (!q) return null
+  let pattern = q
   if (!props.highlightIsRegex) {
-    esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    pattern = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   }
   const flags = props.highlightCaseSensitive ? 'g' : 'gi'
   try {
-    const re = new RegExp(`(${esc})`, flags)
-    return html.replace(re, '<mark class="search-hit">$1</mark>')
-  } catch (e) {
-    // If invalid regex, just return original html
-    return html
+    return new RegExp(pattern, flags)
+  } catch (_) {
+    return null
   }
 }
 
-const displayHtml = computed(() => highlightQuery(highlighted.value))
+function applyDomHighlighting() {
+  const root = codeRef.value
+  if (!root) return
+
+  // Clear any existing highlights
+  const existing = root.querySelectorAll('.search-hit')
+  existing.forEach((el) => {
+    const parent = el.parentNode
+    if (!parent) return
+    while (el.firstChild) parent.insertBefore(el.firstChild, el)
+    parent.removeChild(el)
+    parent.normalize()
+  })
+
+  const re = getQueryRegex()
+  if (!re) {
+    matchCount.value = 0
+    currentMatchIndex.value = -1
+    return
+  }
+
+  // Walk text nodes and build a single searchable string so phrase queries
+  // (e.g. "import Instruction") can match across syntax-highlight spans.
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null)
+  const textNodes = []
+  let node = null
+  while ((node = walker.nextNode())) {
+    if (typeof node.nodeValue === 'string') textNodes.push(node)
+  }
+  if (!textNodes.length) {
+    matchCount.value = 0
+    currentMatchIndex.value = -1
+    return
+  }
+
+  const segments = []
+  let fullText = ''
+  for (const textNode of textNodes) {
+    const text = textNode.nodeValue || ''
+    const start = fullText.length
+    fullText += text
+    segments.push({ node: textNode, start, end: fullText.length })
+  }
+
+  function locatePosition(pos) {
+    for (const seg of segments) {
+      if (pos >= seg.start && pos <= seg.end) {
+        return { node: seg.node, offset: pos - seg.start }
+      }
+    }
+    const last = segments[segments.length - 1]
+    return { node: last.node, offset: (last.node.nodeValue || '').length }
+  }
+
+  re.lastIndex = 0
+  const ranges = []
+  let m
+  while ((m = re.exec(fullText)) && m[0]) {
+    ranges.push({ start: m.index, end: m.index + m[0].length })
+    if (re.lastIndex === m.index) re.lastIndex += 1
+  }
+  if (!ranges.length) {
+    matchCount.value = 0
+    currentMatchIndex.value = -1
+    return
+  }
+
+  // Apply from the end so earlier offsets stay valid.
+  for (let i = ranges.length - 1; i >= 0; i -= 1) {
+    const { start, end } = ranges[i]
+    const startPos = locatePosition(start)
+    const endPos = locatePosition(end)
+    const range = document.createRange()
+    range.setStart(startPos.node, startPos.offset)
+    range.setEnd(endPos.node, endPos.offset)
+    const mark = document.createElement('mark')
+    mark.className = 'search-hit'
+    const fragment = range.extractContents()
+    mark.appendChild(fragment)
+    range.insertNode(mark)
+  }
+
+  const marks = Array.from(root.querySelectorAll('.search-hit'))
+  matchCount.value = marks.length
+  if (!marks.length) {
+    currentMatchIndex.value = -1
+    return
+  }
+  currentMatchIndex.value = 0
+  syncActiveMatch(marks)
+}
 
 watch([() => props.content, () => props.highlightText], () => {
-  nextTick(scrollToFirstMatch)
+  nextTick(() => {
+    applyDomHighlighting()
+    scrollToCurrentMatch()
+  })
 })
 
-function scrollToFirstMatch() {
+function syncActiveMatch(existingMarks = null) {
+  const marks = existingMarks || Array.from(codeRef.value?.querySelectorAll('.search-hit') ?? [])
+  marks.forEach((mark, idx) => {
+    mark.classList.toggle('search-hit-current', idx === currentMatchIndex.value)
+  })
+}
+
+function scrollToCurrentMatch() {
   const el = preRef.value
   if (!el) return
-  const mark = el.querySelector('.search-hit')
+  const marks = Array.from(el.querySelectorAll('.search-hit'))
+  if (!marks.length || currentMatchIndex.value < 0) return
+  const mark = marks[currentMatchIndex.value]
   if (mark) mark.scrollIntoView({ block: 'center', behavior: 'smooth' })
 }
+
+function jumpMatch(step) {
+  if (matchCount.value <= 0) return
+  currentMatchIndex.value = (currentMatchIndex.value + step + matchCount.value) % matchCount.value
+  syncActiveMatch()
+  scrollToCurrentMatch()
+}
+
+function isEditableTarget(target) {
+  if (!target || target.nodeType !== Node.ELEMENT_NODE) return false
+  const el = target
+  const tag = el.tagName?.toLowerCase()
+  if (tag === 'textarea' || tag === 'select') return true
+  if (tag === 'input') {
+    const type = (el.type || 'text').toLowerCase()
+    return !['button', 'checkbox', 'radio', 'submit', 'reset', 'file', 'hidden'].includes(type)
+  }
+  return el.isContentEditable === true
+}
+
+function onKeydown(e) {
+  if (e.key !== 'F3') return
+  if (isEditableTarget(e.target)) return
+  e.preventDefault()
+  jumpMatch(e.shiftKey ? -1 : 1)
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+})
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
+})
 </script>
 
 <template>
@@ -151,9 +294,25 @@ function scrollToFirstMatch() {
     <header class="pane-header">
       <span class="title">Preview</span>
       <span v-if="store.selectedFilePath" class="file-path">{{ store.selectedFilePath }}</span>
+      <div class="header-actions">
+        <button
+          type="button"
+          class="btn-action"
+          :disabled="!store.selectedFilePath"
+          @click="store.openSelectedFileInEditor"
+        >
+          Open File
+        </button>
+        <button type="button" class="btn-action" title="Previous match (Shift+F3)" :disabled="matchCount <= 0" @click="jumpMatch(-1)">Prev</button>
+        <span class="match-meta">{{ matchCount > 0 ? `${currentMatchIndex + 1}/${matchCount}` : '0/0' }}</span>
+        <button type="button" class="btn-action" title="Next match (F3)" :disabled="matchCount <= 0" @click="jumpMatch(1)">Next</button>
+      </div>
     </header>
     <div class="pre-wrap">
-      <pre ref="preRef" class="code-block"><code class="hljs" v-html="displayHtml"></code></pre>
+      <div class="line-gutter" aria-hidden="true">
+        <span v-for="n in lineNumberItems" :key="n" class="line-number">{{ n }}</span>
+      </div>
+      <pre ref="preRef" class="code-block"><code ref="codeRef" class="hljs" v-html="displayHtml"></code></pre>
     </div>
   </div>
 </template>
@@ -189,10 +348,55 @@ function scrollToFirstMatch() {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-action {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.btn-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.match-meta {
+  min-width: 34px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
 .pre-wrap {
   flex: 1;
+  display: flex;
+  align-items: flex-start;
   overflow: auto;
   padding: 16px;
+}
+.line-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  margin-right: 12px;
+  padding-right: 10px;
+  border-right: 1px solid var(--border);
+  text-align: right;
+  user-select: none;
+  background: var(--bg-base);
+}
+.line-number {
+  display: block;
+  min-width: 38px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
 }
 .code-block {
   margin: 0;
@@ -203,8 +407,13 @@ function scrollToFirstMatch() {
   background: transparent !important;
 }
 .code-block :deep(.search-hit) {
-  background: rgba(255, 212, 0, 0.35);
+  background: rgba(56, 189, 248, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.38);
   border-radius: 2px;
   padding: 0 2px;
+}
+.code-block :deep(.search-hit-current) {
+  background: rgba(16, 185, 129, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.9), 0 0 0 2px rgba(16, 185, 129, 0.45), 0 0 10px rgba(16, 185, 129, 0.35);
 }
 </style>

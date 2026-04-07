@@ -3,11 +3,13 @@
 use globset::{Glob, GlobSetBuilder};
 use rayon::prelude::*;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use walkdir::WalkDir;
 
 /// Extensions we consider "code" for search. Lowercase.
-const CODE_EXTENSIONS: &[&str] = &[
+pub const DEFAULT_CODE_EXTENSIONS: &[&str] = &[
     "rs", "vue", "js", "ts", "jsx", "tsx", "mjs", "cjs",
     "dart", "py", "go", "rb", "java", "kt", "kts", "c", "h", "cpp", "hpp", "cc", "cxx",
     "cs", "php", "swift", "scala", "r", "sql", "sh", "bash", "zsh",
@@ -28,10 +30,10 @@ pub struct MatchResult {
     pub match_count: u32,
 }
 
-fn is_code_file(path: &Path) -> bool {
+fn is_code_file(path: &Path, code_extensions: &HashSet<String>) -> bool {
     // Check extension
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-        if CODE_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
+        if code_extensions.contains(&ext.to_lowercase()) {
             return true;
         }
     }
@@ -51,6 +53,37 @@ fn normalize_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+fn load_gitignore_patterns(root_abs: &Path) -> Vec<String> {
+    let gitignore_path = root_abs.join(".gitignore");
+    let content = match std::fs::read_to_string(gitignore_path) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut out = Vec::new();
+    for raw in content.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        // Negation patterns are not supported in this first pass.
+        if line.starts_with('!') {
+            continue;
+        }
+
+        let mut pat = line.trim_start_matches('/').to_string();
+        if pat.ends_with('/') {
+            pat = format!("{}**", pat);
+        }
+        // .gitignore-style bare names should match nested paths too.
+        if !pat.contains('/') {
+            pat = format!("**/{}", pat);
+        }
+        out.push(pat);
+    }
+    out
+}
+
 struct FileCandidate {
     path: PathBuf,
     root_hint: String,
@@ -59,6 +92,7 @@ struct FileCandidate {
 
 use regex::RegexBuilder;
 
+#[allow(dead_code)]
 pub fn search(
     query: &str,
     _exact: bool,
@@ -66,12 +100,38 @@ pub fn search(
     is_regex: bool,
     root_paths: &[String],
     ignore_patterns: &[String],
+    code_extensions: &[String],
 ) -> anyhow::Result<Vec<MatchResult>> {
-    let mut ignore_builder = GlobSetBuilder::new();
-    for pat in ignore_patterns {
-        ignore_builder.add(Glob::new(pat).map_err(|e| anyhow::anyhow!("Invalid ignore pattern: {}", e))?);
-    }
-    let ignore_set = ignore_builder.build()?;
+    search_with_progress(
+        query,
+        _exact,
+        case_sensitive,
+        is_regex,
+        root_paths,
+        ignore_patterns,
+        code_extensions,
+        |_processed, _total| {},
+    )
+}
+
+pub fn search_with_progress<F>(
+    query: &str,
+    _exact: bool,
+    case_sensitive: bool,
+    is_regex: bool,
+    root_paths: &[String],
+    ignore_patterns: &[String],
+    code_extensions: &[String],
+    on_progress: F,
+) -> anyhow::Result<Vec<MatchResult>>
+where
+    F: Fn(usize, usize) + Send + Sync,
+{
+    let extension_set: HashSet<String> = code_extensions
+        .iter()
+        .map(|e| e.trim().trim_start_matches('.').to_lowercase())
+        .filter(|e| !e.is_empty())
+        .collect();
 
     let re = if is_regex {
         Some(
@@ -104,6 +164,19 @@ pub fn search(
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_string();
+        let gitignore_patterns = load_gitignore_patterns(&root_abs);
+        let mut ignore_builder = GlobSetBuilder::new();
+        for pat in ignore_patterns {
+            ignore_builder.add(
+                Glob::new(pat).map_err(|e| anyhow::anyhow!("Invalid ignore pattern: {}", e))?,
+            );
+        }
+        for pat in &gitignore_patterns {
+            ignore_builder.add(
+                Glob::new(pat).map_err(|e| anyhow::anyhow!("Invalid .gitignore pattern: {}", e))?,
+            );
+        }
+        let ignore_set = ignore_builder.build()?;
 
         let walker = WalkDir::new(&root_abs)
             .follow_links(false)
@@ -126,13 +199,13 @@ pub fn search(
                 if p.is_dir() {
                     !name.starts_with('.')
                 } else {
-                    is_code_file(p)
+                    is_code_file(p, &extension_set)
                 }
             });
 
         for entry in walker.filter_map(|e| e.ok()) {
             let path = entry.path().to_path_buf();
-            if path.is_file() && is_code_file(&path) {
+            if path.is_file() && is_code_file(&path, &extension_set) {
                 candidates.push(FileCandidate {
                     path,
                     root_hint: root_hint.clone(),
@@ -141,6 +214,10 @@ pub fn search(
             }
         }
     }
+
+    let total_candidates = candidates.len();
+    on_progress(0, total_candidates);
+    let processed = AtomicUsize::new(0);
 
     let all_matches: Vec<MatchResult> = candidates
         .par_iter()
@@ -166,6 +243,10 @@ pub fn search(
                     match_count += count;
                 }
             }
+            let processed_now = processed.fetch_add(1, Ordering::Relaxed) + 1;
+            if processed_now % 50 == 0 || processed_now == total_candidates {
+                on_progress(processed_now, total_candidates);
+            }
             if lines.is_empty() {
                 return None;
             }
@@ -184,6 +265,11 @@ pub fn search(
             })
         })
         .collect();
+
+    let processed_end = processed.load(Ordering::Relaxed);
+    if processed_end < total_candidates {
+        on_progress(total_candidates, total_candidates);
+    }
 
     let mut sorted = all_matches;
     sorted.sort_by(|a, b| {
@@ -212,13 +298,14 @@ mod tests {
         let roots = vec![root];
 
         // Search "amphi" (e.g. in README.md)
-        let out = search("amphi", true, false, false, &roots, &[]).unwrap();
+        let exts = DEFAULT_CODE_EXTENSIONS.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let out = search("amphi", true, false, false, &roots, &[], &exts).unwrap();
         assert!(!out.is_empty(), "search 'amphi' should find files (e.g. README.md) in {}", roots[0]);
         let has_readme = out.iter().any(|r| r.relative_path.contains("README") || r.file_path.contains("README"));
         assert!(has_readme, "expected at least README.md in results; got {:?}", out.iter().map(|r| r.relative_path.as_str()).collect::<Vec<_>>());
 
         // Search "import" (common in code)
-        let out2 = search("import", true, false, false, &roots, &[]).unwrap();
+        let out2 = search("import", true, false, false, &roots, &[], &exts).unwrap();
         assert!(!out2.is_empty(), "search 'import' should find files in {}", roots[0]);
     }
 }

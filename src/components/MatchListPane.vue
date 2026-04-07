@@ -6,6 +6,13 @@ import { useAppStore } from '../stores/app'
 const store = useAppStore()
 
 const list = computed(() => store.results)
+const progressPercent = computed(() => {
+  const total = store.searchProgressTotal || 0
+  const processed = store.searchProgressProcessed || 0
+  if (!total) return 0
+  return Math.min(100, Math.round((processed / total) * 100))
+})
+const hasSearchStats = computed(() => !store.loading && !!store.searchQuery && store.searchDurationMs > 0)
 
 function matchCount(r) {
   return r.match_count != null ? r.match_count : (r.lines?.length ?? 0)
@@ -16,8 +23,22 @@ const { list: virtualList, containerProps, wrapperProps } = useVirtualList(list,
   overscan: 10,
 })
 
+function isEditableTarget(target) {
+  if (!target || target.nodeType !== Node.ELEMENT_NODE) return false
+  const el = target
+  const tag = el.tagName?.toLowerCase()
+  if (tag === 'textarea' || tag === 'select') return true
+  if (tag === 'input') {
+    const type = (el.type || 'text').toLowerCase()
+    if (['button', 'checkbox', 'radio', 'submit', 'reset', 'file', 'hidden'].includes(type)) return false
+    return true
+  }
+  return el.isContentEditable === true
+}
+
 function onKeydown(e) {
   if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Enter') return
+  if (isEditableTarget(e.target)) return
   const n = store.results.length
   if (n === 0) return
   e.preventDefault()
@@ -42,11 +63,21 @@ onUnmounted(() => {
   <div class="pane match-list-pane">
     <header class="pane-header">
       <span class="title">Matches</span>
-      <span v-if="list.length > 0" class="count">{{ list.length }} files</span>
+      <div class="header-right">
+        <span v-if="list.length > 0" class="count">{{ list.length }} files</span>
+        <span v-if="hasSearchStats" class="stats">
+          {{ store.lastScannedFiles }} scanned in {{ store.searchDurationMs }}ms
+        </span>
+      </div>
     </header>
     <div v-if="store.loading" class="loading">
       <span class="spinner" />
-      <span>Searching…</span>
+      <div class="loading-copy">
+        <span>Searching…</span>
+        <span v-if="store.searchProgressTotal > 0" class="progress-text">
+          {{ store.searchProgressProcessed }}/{{ store.searchProgressTotal }} files ({{ progressPercent }}%)
+        </span>
+      </div>
     </div>
     <div v-else-if="list.length === 0" class="empty">
       <p v-if="store.searchQuery">No files contain this snippet.</p>
@@ -97,6 +128,15 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--text-muted);
 }
+.header-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.stats {
+  font-size: 11px;
+  color: var(--text-muted);
+}
 .loading,
 .empty {
   flex: 1;
@@ -107,6 +147,14 @@ onUnmounted(() => {
   padding: 24px;
   font-size: 13px;
   color: var(--text-muted);
+}
+.loading-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.progress-text {
+  font-size: 11px;
 }
 .spinner {
   width: 18px;

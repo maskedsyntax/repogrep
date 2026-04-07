@@ -5,10 +5,12 @@ mod search;
 use search::MatchResult;
 
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use std::process::Command;
+use tauri::{AppHandle, Emitter, Manager};
 
 const PATHS_FILENAME: &str = "repogrep_paths.json";
 const IGNORES_FILENAME: &str = "repogrep_ignores.json";
+const EXTENSIONS_FILENAME: &str = "repogrep_extensions.json";
 
 /// Strip file:// or file:/// prefix so Path::new(...).is_dir() works.
 fn normalize_path_string(s: &str) -> String {
@@ -32,6 +34,10 @@ fn paths_file(app: &AppHandle) -> Result<PathBuf, String> {
 
 fn ignores_file(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app_data_dir(app)?.join(IGNORES_FILENAME))
+}
+
+fn extensions_file(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app_data_dir(app)?.join(EXTENSIONS_FILENAME))
 }
 
 #[tauri::command]
@@ -69,6 +75,48 @@ fn remove_ignore_pattern(app: AppHandle, pattern: String) -> Result<(), String> 
     let list = get_ignore_patterns(app.clone())?;
     let new_list: Vec<String> = list.into_iter().filter(|p| p != &pattern).collect();
     let pf = ignores_file(&app)?;
+    std::fs::write(&pf, serde_json::to_string_pretty(&new_list).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_code_extensions(app: AppHandle) -> Result<Vec<String>, String> {
+    let pf = extensions_file(&app)?;
+    if pf.exists() {
+        let s = std::fs::read_to_string(&pf).map_err(|e| e.to_string())?;
+        Ok(serde_json::from_str(&s).unwrap_or_default())
+    } else {
+        Ok(search::DEFAULT_CODE_EXTENSIONS
+            .iter()
+            .map(|e| e.to_string())
+            .collect())
+    }
+}
+
+#[tauri::command]
+fn add_code_extension(app: AppHandle, extension: String) -> Result<(), String> {
+    let normalized = extension.trim().trim_start_matches('.').to_lowercase();
+    if normalized.is_empty() {
+        return Ok(());
+    }
+    let mut list = get_code_extensions(app.clone())?;
+    if !list.contains(&normalized) {
+        list.push(normalized);
+        list.sort();
+        let pf = extensions_file(&app)?;
+        std::fs::write(&pf, serde_json::to_string_pretty(&list).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_code_extension(app: AppHandle, extension: String) -> Result<(), String> {
+    let normalized = extension.trim().trim_start_matches('.').to_lowercase();
+    let list = get_code_extensions(app.clone())?;
+    let new_list: Vec<String> = list.into_iter().filter(|e| e != &normalized).collect();
+    let pf = extensions_file(&app)?;
     std::fs::write(&pf, serde_json::to_string_pretty(&new_list).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -154,6 +202,13 @@ struct SearchSnippetArgs {
     paths_override: Option<Vec<String>>,
 }
 
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchProgressPayload {
+    processed: usize,
+    total: usize,
+}
+
 #[tauri::command]
 async fn search_snippet(args: SearchSnippetArgs, app: AppHandle) -> Result<Vec<MatchResult>, String> {
     let paths: Vec<String> = if let Some(override_paths) = args.paths_override {
@@ -175,7 +230,16 @@ async fn search_snippet(args: SearchSnippetArgs, app: AppHandle) -> Result<Vec<M
     let is_regex = args.is_regex;
     let exact = args.exact;
     let ignores = get_ignore_patterns(app.clone())?;
-    tokio::task::spawn_blocking(move || search::search(&q, exact, case_sensitive, is_regex, &paths, &ignores))
+    let code_extensions = get_code_extensions(app.clone())?;
+    let app_for_progress = app.clone();
+    tokio::task::spawn_blocking(move || {
+        search::search_with_progress(&q, exact, case_sensitive, is_regex, &paths, &ignores, &code_extensions, |processed, total| {
+            let _ = app_for_progress.emit(
+                "search-progress",
+                SearchProgressPayload { processed, total },
+            );
+        })
+    })
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
@@ -184,6 +248,35 @@ async fn search_snippet(args: SearchSnippetArgs, app: AppHandle) -> Result<Vec<M
 #[tauri::command]
 fn read_file_content(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn open_file_in_editor(path: String) -> Result<(), String> {
+    let p = normalize_path_string(&path);
+    if p.trim().is_empty() {
+        return Err("Empty file path".to_string());
+    }
+    if !std::path::Path::new(&p).exists() {
+        return Err(format!("File not found: {}", p));
+    }
+
+    #[cfg(target_os = "macos")]
+    let status = Command::new("open").arg(&p).status().map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "linux")]
+    let status = Command::new("xdg-open").arg(&p).status().map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "windows")]
+    let status = Command::new("cmd")
+        .args(["/C", "start", "", &p])
+        .status()
+        .map_err(|e| e.to_string())?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("Failed to open file: {}", p))
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -203,8 +296,12 @@ pub fn run() {
             get_ignore_patterns,
             add_ignore_pattern,
             remove_ignore_pattern,
+            get_code_extensions,
+            add_code_extension,
+            remove_code_extension,
             search_snippet,
             read_file_content,
+            open_file_in_editor,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

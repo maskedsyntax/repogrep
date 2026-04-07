@@ -7,10 +7,13 @@ const store = useAppStore()
 const theme = inject('theme')
 const toggleTheme = inject('toggleTheme')
 const newPattern = ref('')
+const newExtension = ref('')
+const showExtensions = ref(false)
 
 onMounted(() => {
   store.loadPaths()
   store.loadIgnores()
+  store.loadCodeExtensions()
 })
 
 function handleAddIgnore() {
@@ -24,6 +27,13 @@ function onKeydown(e) {
     e.preventDefault()
     store.search()
   }
+}
+
+function handleAddExtension() {
+  const ext = newExtension.value.trim().replace(/^\./, '').toLowerCase()
+  if (!ext) return
+  store.addCodeExtension(ext)
+  newExtension.value = ''
 }
 </script>
 
@@ -95,6 +105,42 @@ function onKeydown(e) {
         </div>
       </div>
     </section>
+    <section class="extensions-section">
+      <div class="section-head">
+        <span class="label">Code Extensions (Advanced)</span>
+        <button type="button" class="toggle-advanced" @click="showExtensions = !showExtensions">
+          {{ showExtensions ? 'Hide' : 'Customize' }}
+        </button>
+      </div>
+      <div v-if="showExtensions" class="add-ignore-row">
+        <div class="input-group">
+          <input
+            v-model="newExtension"
+            type="text"
+            class="input-mini"
+            placeholder="Add extension (e.g. ts)..."
+            @keydown.enter.stop="handleAddExtension"
+          />
+          <button type="button" class="btn-add-inline" title="Add extension" @click="handleAddExtension">
+            <Plus :size="14" />
+          </button>
+        </div>
+      </div>
+      <p v-if="!showExtensions" class="hint">Defaults work for most repos; customize only if needed.</p>
+      <div v-if="showExtensions && store.codeExtensions.length" class="ignore-tags">
+        <div v-for="ext in store.codeExtensions" :key="ext" class="tag">
+          <span class="tag-text">.{{ ext }}</span>
+          <button
+            type="button"
+            class="tag-remove"
+            title="Remove"
+            @click="store.removeCodeExtension(ext)"
+          >
+            <X :size="10" />
+          </button>
+        </div>
+      </div>
+    </section>
     <section class="search-section">
       <label class="label">Snippet to search</label>
       <textarea
@@ -122,6 +168,24 @@ function onKeydown(e) {
           <span class="option-label">Use Regex</span>
         </label>
       </div>
+      <div v-if="store.searchHistory.length" class="history-block">
+        <div class="history-head">
+          <span class="history-title">Recent</span>
+          <button type="button" class="history-clear" @click="store.clearSearchHistory">Clear</button>
+        </div>
+        <div class="history-chips">
+          <button
+            v-for="q in store.searchHistory"
+            :key="q"
+            type="button"
+            class="history-chip"
+            :title="q"
+            @click="store.setSearchQuery(q)"
+          >
+            {{ q }}
+          </button>
+        </div>
+      </div>
       <button type="button" class="btn-search" @click="store.search">
         Search
       </button>
@@ -145,6 +209,20 @@ function onKeydown(e) {
   flex-shrink: 0;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
+}
+.extensions-section {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.toggle-advanced {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
 }
 .count-badge {
   font-size: 10px;
@@ -390,6 +468,50 @@ function onKeydown(e) {
 }
 .option-label {
   user-select: none;
+}
+.history-block {
+  margin-top: 12px;
+}
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.history-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.history-clear {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.history-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.history-chip {
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 3px 9px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-chip:hover {
+  border-color: var(--accent);
 }
 .btn-search {
   margin-top: 12px;

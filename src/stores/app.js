@@ -1,10 +1,12 @@
 import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { ref, computed } from 'vue'
 
 export const useAppStore = defineStore('app', () => {
   const projectPaths = ref([])
   const ignorePatterns = ref([])
+  const codeExtensions = ref([])
   const searchQuery = ref('')
   const caseSensitive = ref(false)
   const isRegex = ref(false)
@@ -13,6 +15,30 @@ export const useAppStore = defineStore('app', () => {
   const selectedFileContent = ref('')
   const selectedFilePath = ref('')
   const loading = ref(false)
+  const searchProgressProcessed = ref(0)
+  const searchProgressTotal = ref(0)
+  const searchDurationMs = ref(0)
+  const lastScannedFiles = ref(0)
+  const searchHistory = ref([])
+  const SEARCH_HISTORY_KEY = 'repogrep-search-history'
+  const SEARCH_HISTORY_LIMIT = 12
+
+  try {
+    const raw = localStorage.getItem(SEARCH_HISTORY_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    searchHistory.value = Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : []
+  } catch (_) {
+    searchHistory.value = []
+  }
+
+  listen('search-progress', (event) => {
+    const processed = Number(event.payload?.processed ?? 0)
+    const total = Number(event.payload?.total ?? 0)
+    searchProgressProcessed.value = Number.isFinite(processed) ? processed : 0
+    searchProgressTotal.value = Number.isFinite(total) ? total : 0
+  }).catch((e) => {
+    console.warn('search-progress listener failed', e)
+  })
 
   const selectedResult = computed(() => {
     const i = selectedIndex.value
@@ -64,6 +90,34 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  async function loadCodeExtensions() {
+    try {
+      codeExtensions.value = await invoke('get_code_extensions')
+    } catch (e) {
+      console.error('loadCodeExtensions', e)
+    }
+  }
+
+  async function addCodeExtension(extension) {
+    const ext = String(extension || '').trim().replace(/^\./, '').toLowerCase()
+    if (!ext) return
+    try {
+      await invoke('add_code_extension', { extension: ext })
+      await loadCodeExtensions()
+    } catch (e) {
+      console.error('addCodeExtension', e)
+    }
+  }
+
+  async function removeCodeExtension(extension) {
+    try {
+      await invoke('remove_code_extension', { extension })
+      await loadCodeExtensions()
+    } catch (e) {
+      console.error('removeCodeExtension', e)
+    }
+  }
+
   async function removeIgnorePattern(pattern) {
     try {
       await invoke('remove_ignore_pattern', { pattern })
@@ -103,6 +157,11 @@ export const useAppStore = defineStore('app', () => {
         ? projectPaths.value.map((p) => p.path)
         : null
     loading.value = true
+    const startTimeMs = Date.now()
+    searchProgressProcessed.value = 0
+    searchProgressTotal.value = 0
+    searchDurationMs.value = 0
+    lastScannedFiles.value = 0
     try {
       const list = await invoke('search_snippet', {
         args: {
@@ -120,11 +179,24 @@ export const useAppStore = defineStore('app', () => {
       if (list.length > 0) {
         await loadFileContent(list[0].file_path)
       }
+      addSearchHistoryEntry(q)
     } catch (e) {
       console.error('search', e)
       results.value = []
     } finally {
+      searchDurationMs.value = Date.now() - startTimeMs
+      lastScannedFiles.value = searchProgressTotal.value
       loading.value = false
+    }
+  }
+
+  async function openSelectedFileInEditor() {
+    const path = selectedFilePath.value
+    if (!path) return
+    try {
+      await invoke('open_file_in_editor', { path })
+    } catch (e) {
+      console.error('openSelectedFileInEditor', e)
     }
   }
 
@@ -149,9 +221,23 @@ export const useAppStore = defineStore('app', () => {
     searchQuery.value = q
   }
 
+  function addSearchHistoryEntry(query) {
+    const trimmed = String(query || '').trim()
+    if (!trimmed) return
+    const deduped = [trimmed, ...searchHistory.value.filter((q) => q !== trimmed)]
+    searchHistory.value = deduped.slice(0, SEARCH_HISTORY_LIMIT)
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(searchHistory.value))
+  }
+
+  function clearSearchHistory() {
+    searchHistory.value = []
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify([]))
+  }
+
   return {
     projectPaths,
     ignorePatterns,
+    codeExtensions,
     searchQuery,
     caseSensitive,
     isRegex,
@@ -161,15 +247,25 @@ export const useAppStore = defineStore('app', () => {
     selectedFileContent,
     selectedFilePath,
     loading,
+    searchProgressProcessed,
+    searchProgressTotal,
+    searchDurationMs,
+    lastScannedFiles,
+    searchHistory,
     loadPaths,
     addProjectPath,
     removeProjectPath,
     loadIgnores,
     addIgnorePattern,
     removeIgnorePattern,
+    loadCodeExtensions,
+    addCodeExtension,
+    removeCodeExtension,
     openFolderPicker,
     search,
     selectResult,
     setSearchQuery,
+    openSelectedFileInEditor,
+    clearSearchHistory,
   }
 })
