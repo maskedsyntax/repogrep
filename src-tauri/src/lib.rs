@@ -4,6 +4,7 @@
 mod search;
 use search::MatchResult;
 
+use regex::RegexBuilder;
 use std::path::PathBuf;
 use std::process::Command;
 use tauri::{AppHandle, Emitter, Manager};
@@ -209,6 +210,25 @@ struct SearchProgressPayload {
     total: usize,
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReplaceSnippetArgs {
+    query: String,
+    replacement: String,
+    #[serde(alias = "caseSensitive")]
+    case_sensitive: bool,
+    #[serde(alias = "isRegex")]
+    is_regex: bool,
+    file_paths: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReplaceResult {
+    files_changed: usize,
+    replacements_made: usize,
+}
+
 #[tauri::command]
 async fn search_snippet(args: SearchSnippetArgs, app: AppHandle) -> Result<Vec<MatchResult>, String> {
     let paths: Vec<String> = if let Some(override_paths) = args.paths_override {
@@ -279,6 +299,80 @@ fn open_file_in_editor(path: String) -> Result<(), String> {
     }
 }
 
+#[tauri::command]
+fn replace_snippet(args: ReplaceSnippetArgs) -> Result<ReplaceResult, String> {
+    let query = args.query.trim().to_string();
+    if query.is_empty() {
+        return Ok(ReplaceResult {
+            files_changed: 0,
+            replacements_made: 0,
+        });
+    }
+
+    let mut files_changed = 0usize;
+    let mut replacements_made = 0usize;
+
+    if args.is_regex {
+        let re = RegexBuilder::new(&query)
+            .case_insensitive(!args.case_sensitive)
+            .build()
+            .map_err(|e| format!("Invalid regex: {}", e))?;
+        for path in args.file_paths {
+            let p = normalize_path_string(&path);
+            let content = match std::fs::read_to_string(&p) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let count = re.find_iter(&content).count();
+            if count == 0 {
+                continue;
+            }
+            let replaced = re.replace_all(&content, args.replacement.as_str()).to_string();
+            std::fs::write(&p, replaced).map_err(|e| e.to_string())?;
+            files_changed += 1;
+            replacements_made += count;
+        }
+    } else {
+        let needle = if args.case_sensitive {
+            query.clone()
+        } else {
+            query.to_lowercase()
+        };
+        for path in args.file_paths {
+            let p = normalize_path_string(&path);
+            let content = match std::fs::read_to_string(&p) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let count = if args.case_sensitive {
+                content.matches(&query).count()
+            } else {
+                content.to_lowercase().matches(&needle).count()
+            };
+            if count == 0 {
+                continue;
+            }
+            let replaced = if args.case_sensitive {
+                content.replace(&query, &args.replacement)
+            } else {
+                let re = RegexBuilder::new(&regex::escape(&query))
+                    .case_insensitive(true)
+                    .build()
+                    .map_err(|e| format!("Regex build failed: {}", e))?;
+                re.replace_all(&content, args.replacement.as_str()).to_string()
+            };
+            std::fs::write(&p, replaced).map_err(|e| e.to_string())?;
+            files_changed += 1;
+            replacements_made += count;
+        }
+    }
+
+    Ok(ReplaceResult {
+        files_changed,
+        replacements_made,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -302,6 +396,7 @@ pub fn run() {
             search_snippet,
             read_file_content,
             open_file_in_editor,
+            replace_snippet,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -13,8 +13,8 @@
 - [x] **Git Integration:** Respect `.gitignore` rules automatically when searching repositories.
 - [x] **Line Numbers:** Add line numbers to the code preview pane for better orientation.
 - [x] **Search History:** Maintain a list of recent queries for quick re-runs.
-- [ ] **Tree View:** Provide an optional folder-based tree view for search results.
+- [x] **Tree View:** Provide an optional folder-based tree view for search results.
 - [x] **Custom Extensions:** Let users configure which file extensions are considered "code."
 - [x] **Performance Stats:** Display "Time taken" and "Total files scanned" after each search.
-- [ ] **Export Results:** Add an option to export the match list as JSON or CSV.
-- [ ] **Find & Replace:** Implement basic multi-file search and replace functionality.
+- [x] **Export Results:** Add an option to export the match list as JSON or CSV.
+- [x] **Find & Replace:** Implement basic multi-file search and replace functionality.

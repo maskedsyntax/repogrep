@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useVirtualList } from '@vueuse/core'
 import { useAppStore } from '../stores/app'
 
@@ -13,6 +13,8 @@ const progressPercent = computed(() => {
   return Math.min(100, Math.round((processed / total) * 100))
 })
 const hasSearchStats = computed(() => !store.loading && !!store.searchQuery && store.searchDurationMs > 0)
+const treeView = ref(false)
+const collapsedFolders = ref({})
 
 function matchCount(r) {
   return r.match_count != null ? r.match_count : (r.lines?.length ?? 0)
@@ -22,6 +24,87 @@ const { list: virtualList, containerProps, wrapperProps } = useVirtualList(list,
   itemHeight: 52,
   overscan: 10,
 })
+const treeRows = computed(() => {
+  const byRoot = new Map()
+  for (const r of list.value) {
+    const root = r.root_hint || 'root'
+    if (!byRoot.has(root)) byRoot.set(root, [])
+    byRoot.get(root).push(r)
+  }
+
+  const roots = []
+  const rootEntries = Array.from(byRoot.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+  for (const [root, files] of rootEntries) {
+    const rootNode = { name: root, path: root, type: 'root', children: [], file: null }
+    const folders = new Map()
+
+    for (const f of files) {
+      const parts = (f.relative_path || '').split('/').filter(Boolean)
+      let parentPath = root
+      let parentNode = rootNode
+
+      for (let i = 0; i < parts.length; i += 1) {
+        const part = parts[i]
+        const isFile = i === parts.length - 1
+        const nodePath = `${parentPath}/${part}`
+        if (isFile) {
+          parentNode.children.push({
+            name: part,
+            path: nodePath,
+            type: 'file',
+            children: [],
+            file: f,
+          })
+        } else {
+          let folderNode = folders.get(nodePath)
+          if (!folderNode) {
+            folderNode = {
+              name: part,
+              path: nodePath,
+              type: 'folder',
+              children: [],
+              file: null,
+            }
+            folders.set(nodePath, folderNode)
+            parentNode.children.push(folderNode)
+          }
+          parentNode = folderNode
+          parentPath = nodePath
+        }
+      }
+    }
+
+    const sortNode = (node) => {
+      node.children.sort((a, b) => {
+        if (a.type === b.type) return a.name.localeCompare(b.name)
+        if (a.type === 'file') return 1
+        if (b.type === 'file') return -1
+        return 0
+      })
+      node.children.forEach(sortNode)
+    }
+    sortNode(rootNode)
+    roots.push(rootNode)
+  }
+
+  const rows = []
+  const walk = (node, depth) => {
+    rows.push({ node, depth })
+    if (node.type === 'file') return
+    if (collapsedFolders.value[node.path]) return
+    for (const child of node.children) walk(child, depth + 1)
+  }
+  for (const rootNode of roots) walk(rootNode, 0)
+  return rows
+})
+
+function toggleFolder(path) {
+  collapsedFolders.value[path] = !collapsedFolders.value[path]
+}
+
+function hasChildren(row) {
+  return row.node.type !== 'file' && row.node.children.length > 0
+}
 
 function isEditableTarget(target) {
   if (!target || target.nodeType !== Node.ELEMENT_NODE) return false
@@ -68,6 +151,30 @@ onUnmounted(() => {
         <span v-if="hasSearchStats" class="stats">
           {{ store.lastScannedFiles }} scanned in {{ store.searchDurationMs }}ms
         </span>
+        <button
+          type="button"
+          class="btn-head"
+          :disabled="list.length === 0"
+          @click="treeView = !treeView"
+        >
+          {{ treeView ? 'List' : 'Tree' }}
+        </button>
+        <button
+          type="button"
+          class="btn-head"
+          :disabled="list.length === 0"
+          @click="store.exportResultsAsJson"
+        >
+          JSON
+        </button>
+        <button
+          type="button"
+          class="btn-head"
+          :disabled="list.length === 0"
+          @click="store.exportResultsAsCsv"
+        >
+          CSV
+        </button>
       </div>
     </header>
     <div v-if="store.loading" class="loading">
@@ -83,7 +190,7 @@ onUnmounted(() => {
       <p v-if="store.searchQuery">No files contain this snippet.</p>
       <p v-else>Paste a snippet and press Search.</p>
     </div>
-    <div v-else v-bind="containerProps" class="list-container">
+    <div v-else-if="!treeView" v-bind="containerProps" class="list-container">
       <div v-bind="wrapperProps" class="list-wrapper">
         <div
           v-for="{ data: r, index } in virtualList"
@@ -96,6 +203,30 @@ onUnmounted(() => {
           <span class="relative-path">{{ r.relative_path }}</span>
           <span class="line-info">{{ matchCount(r) }} match{{ matchCount(r) !== 1 ? 'es' : '' }}</span>
         </div>
+      </div>
+    </div>
+    <div v-else class="tree-container">
+      <div
+        v-for="row in treeRows"
+        :key="row.node.path"
+        class="tree-row"
+        :class="{
+          'tree-root-row': row.node.type === 'root',
+          'tree-folder-row': row.node.type === 'folder',
+          active: row.node.type === 'file' && store.selectedResult?.file_path === row.node.file.file_path,
+        }"
+        :style="{ paddingLeft: `${16 + row.depth * 14}px` }"
+        @click="row.node.type === 'file' ? store.selectResultByFilePath(row.node.file.file_path) : hasChildren(row) ? toggleFolder(row.node.path) : null"
+      >
+        <span v-if="hasChildren(row)" class="tree-caret">{{ collapsedFolders[row.node.path] ? '▸' : '▾' }}</span>
+        <span v-else class="tree-caret tree-caret-empty">·</span>
+        <span class="tree-kind" :class="`tree-kind-${row.node.type}`">
+          {{ row.node.type === 'file' ? '•' : row.node.type === 'folder' ? '▣' : '◆' }}
+        </span>
+        <span class="tree-name">{{ row.node.name }}</span>
+        <span v-if="row.node.type === 'file'" class="line-info">
+          {{ matchCount(row.node.file) }} match{{ matchCount(row.node.file) !== 1 ? 'es' : '' }}
+        </span>
       </div>
     </div>
   </div>
@@ -137,6 +268,19 @@ onUnmounted(() => {
   font-size: 11px;
   color: var(--text-muted);
 }
+.btn-head {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.btn-head:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .loading,
 .empty {
   flex: 1;
@@ -171,6 +315,71 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+}
+.tree-container {
+  flex: 1;
+  overflow: auto;
+  padding: 8px 0 12px;
+}
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  padding-right: 12px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  border-radius: 0 8px 8px 0;
+}
+.tree-row:hover {
+  background: color-mix(in srgb, var(--bg-hover) 72%, transparent);
+}
+.tree-root-row {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tree-folder-row {
+  color: var(--text);
+  font-size: 12px;
+}
+.tree-row.active {
+  background: color-mix(in srgb, var(--accent-subtle) 85%, transparent);
+  border-left: 3px solid var(--accent);
+}
+.tree-caret {
+  width: 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.tree-caret-empty {
+  color: color-mix(in srgb, var(--text-muted) 50%, transparent);
+}
+.tree-kind {
+  width: 12px;
+  text-align: center;
+  font-size: 9px;
+}
+.tree-kind-root {
+  color: var(--accent);
+}
+.tree-kind-folder {
+  color: color-mix(in srgb, var(--text-muted) 75%, var(--accent) 25%);
+}
+.tree-kind-file {
+  color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+}
+.tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
 }
 .list-wrapper {
   position: relative;

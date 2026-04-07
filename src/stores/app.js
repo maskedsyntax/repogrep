@@ -20,6 +20,8 @@ export const useAppStore = defineStore('app', () => {
   const searchDurationMs = ref(0)
   const lastScannedFiles = ref(0)
   const searchHistory = ref([])
+  const replaceText = ref('')
+  const replaceSummary = ref('')
   const SEARCH_HISTORY_KEY = 'repogrep-search-history'
   const SEARCH_HISTORY_LIMIT = 12
 
@@ -162,6 +164,7 @@ export const useAppStore = defineStore('app', () => {
     searchProgressTotal.value = 0
     searchDurationMs.value = 0
     lastScannedFiles.value = 0
+    replaceSummary.value = ''
     try {
       const list = await invoke('search_snippet', {
         args: {
@@ -207,6 +210,12 @@ export const useAppStore = defineStore('app', () => {
     await loadFileContent(r.file_path)
   }
 
+  async function selectResultByFilePath(path) {
+    const idx = results.value.findIndex((r) => r.file_path === path)
+    if (idx < 0) return
+    await selectResult(idx)
+  }
+
   async function loadFileContent(path) {
     selectedFilePath.value = path
     try {
@@ -234,6 +243,71 @@ export const useAppStore = defineStore('app', () => {
     localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify([]))
   }
 
+  async function replaceMatchesInResults() {
+    const q = searchQuery.value?.trim()
+    if (!q || !results.value.length) return
+    const filePaths = results.value.map((r) => r.file_path)
+    try {
+      const out = await invoke('replace_snippet', {
+        args: {
+          query: q,
+          replacement: replaceText.value ?? '',
+          caseSensitive: caseSensitive.value,
+          isRegex: isRegex.value,
+          filePaths,
+        },
+      })
+      const changed = Number(out?.filesChanged ?? 0)
+      const replaced = Number(out?.replacementsMade ?? 0)
+      replaceSummary.value = `Replaced ${replaced} occurrence${replaced === 1 ? '' : 's'} across ${changed} file${changed === 1 ? '' : 's'}.`
+      await search()
+    } catch (e) {
+      console.error('replaceMatchesInResults', e)
+      replaceSummary.value = 'Replace failed. Check console for details.'
+    }
+  }
+
+  function exportResultsAsJson() {
+    if (!results.value.length) return
+    const payload = {
+      query: searchQuery.value,
+      caseSensitive: caseSensitive.value,
+      isRegex: isRegex.value,
+      generatedAt: new Date().toISOString(),
+      results: results.value,
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `repogrep-results-${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  function exportResultsAsCsv() {
+    if (!results.value.length) return
+    const escapeCsv = (value) => {
+      const s = String(value ?? '')
+      if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+      return s
+    }
+    const header = ['root_hint', 'relative_path', 'file_path', 'match_count', 'lines']
+    const rows = results.value.map((r) => [
+      r.root_hint,
+      r.relative_path,
+      r.file_path,
+      r.match_count ?? (r.lines?.length ?? 0),
+      (r.lines || []).join(';'),
+    ])
+    const csv = [header, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `repogrep-results-${Date.now()}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
   return {
     projectPaths,
     ignorePatterns,
@@ -252,6 +326,8 @@ export const useAppStore = defineStore('app', () => {
     searchDurationMs,
     lastScannedFiles,
     searchHistory,
+    replaceText,
+    replaceSummary,
     loadPaths,
     addProjectPath,
     removeProjectPath,
@@ -264,8 +340,12 @@ export const useAppStore = defineStore('app', () => {
     openFolderPicker,
     search,
     selectResult,
+    selectResultByFilePath,
     setSearchQuery,
     openSelectedFileInEditor,
     clearSearchHistory,
+    exportResultsAsJson,
+    exportResultsAsCsv,
+    replaceMatchesInResults,
   }
 })

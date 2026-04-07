@@ -189,6 +189,21 @@ function handleAddExtension() {
       <button type="button" class="btn-search" @click="store.search">
         Search
       </button>
+      <div v-if="store.results.length > 0" class="replace-block">
+        <label class="label">Replace in matched files</label>
+        <div class="replace-row">
+          <input
+            v-model="store.replaceText"
+            type="text"
+            class="input-mini replace-input"
+            placeholder="Replacement text"
+          />
+          <button type="button" class="btn-replace" @click="store.replaceMatchesInResults">
+            Replace All
+          </button>
+        </div>
+        <p v-if="store.replaceSummary" class="replace-summary">{{ store.replaceSummary }}</p>
+      </div>
     </section>
   </div>
 </template>
@@ -530,5 +545,33 @@ function handleAddExtension() {
 }
 .btn-search:active {
   transform: scale(0.98);
+}
+.replace-block {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.replace-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.replace-input {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.btn-replace {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 12px;
+  padding: 0 10px;
+  cursor: pointer;
+}
+.replace-summary {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 </style>
