@@ -1,0 +1,20 @@
+macOS app icons (Big Sur / Apple HIG) — repogrep
+
+1. Source of truth
+   - Master file: source-app-icon.png (1024×1024, PNG).
+   - Update: copy your final artwork over source-app-icon.png, then regenerate:
+       npm run icons:generate
+     (equivalent: npx tauri icon src-tauri/icons/source-app-icon.png)
+
+2. What you provide (design rules — not automated here)
+   - Full-bleed square canvas; do not bake the squircle or rounded “app icon” shape into the PNG.
+   - Prefer ~10–15% safe margin in the artwork so nothing important sits on the outer edge (HIG).
+   - Avoid stacking your own heavy drop shadow on top of what the system will add (can look muddy).
+
+3. What the system does
+   - The installed .app uses icon.icns; the OS composes the dock / Finder tile (mask, lighting, shadow).
+
+4. tauri dev vs packaged app
+   - For the real dock/Finder look, build and open the .app:
+       npm run tauri build
+       open src-tauri/target/release/bundle/macos/*.app
