@@ -220,6 +220,8 @@ struct ReplaceSnippetArgs {
     #[serde(alias = "isRegex")]
     is_regex: bool,
     file_paths: Vec<String>,
+    target_file_path: Option<String>,
+    occurrence_index: Option<usize>,
 }
 
 #[derive(serde::Serialize)]
@@ -312,6 +314,28 @@ fn replace_snippet(args: ReplaceSnippetArgs) -> Result<ReplaceResult, String> {
     let mut files_changed = 0usize;
     let mut replacements_made = 0usize;
 
+    if let Some(target_path) = args.target_file_path {
+        let p = normalize_path_string(&target_path);
+        let content = std::fs::read_to_string(&p).map_err(|e| e.to_string())?;
+        let out = replace_in_single_content(
+            &content,
+            &query,
+            &args.replacement,
+            args.case_sensitive,
+            args.is_regex,
+            args.occurrence_index,
+        )?;
+        if out.1 > 0 {
+            std::fs::write(&p, out.0).map_err(|e| e.to_string())?;
+            files_changed = 1;
+            replacements_made = out.1;
+        }
+        return Ok(ReplaceResult {
+            files_changed,
+            replacements_made,
+        });
+    }
+
     if args.is_regex {
         let re = RegexBuilder::new(&query)
             .case_insensitive(!args.case_sensitive)
@@ -373,6 +397,89 @@ fn replace_snippet(args: ReplaceSnippetArgs) -> Result<ReplaceResult, String> {
     })
 }
 
+fn replace_in_single_content(
+    content: &str,
+    query: &str,
+    replacement: &str,
+    case_sensitive: bool,
+    is_regex: bool,
+    occurrence_index: Option<usize>,
+) -> Result<(String, usize), String> {
+    if is_regex {
+        let re = RegexBuilder::new(query)
+            .case_insensitive(!case_sensitive)
+            .build()
+            .map_err(|e| format!("Invalid regex: {}", e))?;
+        if let Some(idx) = occurrence_index {
+            let matches: Vec<_> = re.find_iter(content).collect();
+            if idx >= matches.len() {
+                return Ok((content.to_string(), 0));
+            }
+            let m = matches[idx];
+            let mut out = String::with_capacity(content.len() + replacement.len());
+            out.push_str(&content[..m.start()]);
+            out.push_str(replacement);
+            out.push_str(&content[m.end()..]);
+            Ok((out, 1))
+        } else {
+            let count = re.find_iter(content).count();
+            if count == 0 {
+                return Ok((content.to_string(), 0));
+            }
+            Ok((re.replace_all(content, replacement).to_string(), count))
+        }
+    } else if case_sensitive {
+        if let Some(idx) = occurrence_index {
+            let matches: Vec<_> = content.match_indices(query).collect();
+            if idx >= matches.len() {
+                return Ok((content.to_string(), 0));
+            }
+            let (start, matched) = matches[idx];
+            let end = start + matched.len();
+            let mut out = String::with_capacity(content.len() + replacement.len());
+            out.push_str(&content[..start]);
+            out.push_str(replacement);
+            out.push_str(&content[end..]);
+            Ok((out, 1))
+        } else {
+            let count = content.matches(query).count();
+            if count == 0 {
+                return Ok((content.to_string(), 0));
+            }
+            Ok((content.replace(query, replacement), count))
+        }
+    } else {
+        let re = RegexBuilder::new(&regex::escape(query))
+            .case_insensitive(true)
+            .build()
+            .map_err(|e| format!("Regex build failed: {}", e))?;
+        if let Some(idx) = occurrence_index {
+            let matches: Vec<_> = re.find_iter(content).collect();
+            if idx >= matches.len() {
+                return Ok((content.to_string(), 0));
+            }
+            let m = matches[idx];
+            let mut out = String::with_capacity(content.len() + replacement.len());
+            out.push_str(&content[..m.start()]);
+            out.push_str(replacement);
+            out.push_str(&content[m.end()..]);
+            Ok((out, 1))
+        } else {
+            let count = re.find_iter(content).count();
+            if count == 0 {
+                return Ok((content.to_string(), 0));
+            }
+            Ok((re.replace_all(content, replacement).to_string(), count))
+        }
+    }
+}
+
+#[tauri::command]
+fn write_to_file(path: String, content: String) -> Result<(), String> {
+    let p = normalize_path_string(&path);
+    std::fs::write(&p, content).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -397,6 +504,7 @@ pub fn run() {
             read_file_content,
             open_file_in_editor,
             replace_snippet,
+            write_to_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

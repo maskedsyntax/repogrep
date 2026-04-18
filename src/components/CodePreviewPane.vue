@@ -236,6 +236,7 @@ watch([() => props.content, () => props.highlightText], () => {
   nextTick(() => {
     applyDomHighlighting()
     scrollToCurrentMatch()
+    store.setPreviewMatchState(currentMatchIndex.value, matchCount.value)
   })
 })
 
@@ -260,6 +261,7 @@ function jumpMatch(step) {
   currentMatchIndex.value = (currentMatchIndex.value + step + matchCount.value) % matchCount.value
   syncActiveMatch()
   scrollToCurrentMatch()
+  store.setPreviewMatchState(currentMatchIndex.value, matchCount.value)
 }
 
 function isEditableTarget(target) {

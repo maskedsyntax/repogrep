@@ -8,8 +8,9 @@ export const useAppStore = defineStore('app', () => {
   const ignorePatterns = ref([])
   const codeExtensions = ref([])
   const searchQuery = ref('')
-  const caseSensitive = ref(false)
-  const isRegex = ref(false)
+  const caseSensitive = ref(localStorage.getItem('repogrep-case-sensitive') === 'true')
+  const isRegex = ref(localStorage.getItem('repogrep-is-regex') === 'true')
+  const treeView = ref(localStorage.getItem('repogrep-tree-view') === 'true')
   const results = ref([])
   const selectedIndex = ref(0)
   const selectedFileContent = ref('')
@@ -22,6 +23,8 @@ export const useAppStore = defineStore('app', () => {
   const searchHistory = ref([])
   const replaceText = ref('')
   const replaceSummary = ref('')
+  const currentPreviewMatchIndex = ref(-1)
+  const currentPreviewMatchCount = ref(0)
   const SEARCH_HISTORY_KEY = 'repogrep-search-history'
   const SEARCH_HISTORY_LIMIT = 12
 
@@ -230,6 +233,21 @@ export const useAppStore = defineStore('app', () => {
     searchQuery.value = q
   }
 
+  function toggleCaseSensitive() {
+    caseSensitive.value = !caseSensitive.value
+    localStorage.setItem('repogrep-case-sensitive', String(caseSensitive.value))
+  }
+
+  function toggleIsRegex() {
+    isRegex.value = !isRegex.value
+    localStorage.setItem('repogrep-is-regex', String(isRegex.value))
+  }
+
+  function toggleTreeView() {
+    treeView.value = !treeView.value
+    localStorage.setItem('repogrep-tree-view', String(treeView.value))
+  }
+
   function addSearchHistoryEntry(query) {
     const trimmed = String(query || '').trim()
     if (!trimmed) return
@@ -255,6 +273,8 @@ export const useAppStore = defineStore('app', () => {
           caseSensitive: caseSensitive.value,
           isRegex: isRegex.value,
           filePaths,
+          targetFilePath: null,
+          occurrenceIndex: null,
         },
       })
       const changed = Number(out?.filesChanged ?? 0)
@@ -267,8 +287,74 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  function exportResultsAsJson() {
+  async function replaceInCurrentFile() {
+    const q = searchQuery.value?.trim()
+    const path = selectedFilePath.value
+    if (!q || !path) return
+    try {
+      const out = await invoke('replace_snippet', {
+        args: {
+          query: q,
+          replacement: replaceText.value ?? '',
+          caseSensitive: caseSensitive.value,
+          isRegex: isRegex.value,
+          filePaths: [],
+          targetFilePath: path,
+          occurrenceIndex: null,
+        },
+      })
+      const changed = Number(out?.filesChanged ?? 0)
+      const replaced = Number(out?.replacementsMade ?? 0)
+      replaceSummary.value = `Replaced ${replaced} occurrence${replaced === 1 ? '' : 's'} in ${changed === 1 ? 'current file' : '0 files'}.`
+      await search()
+      await selectResultByFilePath(path)
+    } catch (e) {
+      console.error('replaceInCurrentFile', e)
+      replaceSummary.value = 'Replace file failed. Check console for details.'
+    }
+  }
+
+  async function replaceCurrentOccurrence() {
+    const q = searchQuery.value?.trim()
+    const path = selectedFilePath.value
+    const idx = currentPreviewMatchIndex.value
+    if (!q || !path || idx < 0) return
+    try {
+      const out = await invoke('replace_snippet', {
+        args: {
+          query: q,
+          replacement: replaceText.value ?? '',
+          caseSensitive: caseSensitive.value,
+          isRegex: isRegex.value,
+          filePaths: [],
+          targetFilePath: path,
+          occurrenceIndex: idx,
+        },
+      })
+      const replaced = Number(out?.replacementsMade ?? 0)
+      replaceSummary.value = replaced > 0 ? 'Replaced current occurrence.' : 'No occurrence replaced.'
+      await search()
+      await selectResultByFilePath(path)
+    } catch (e) {
+      console.error('replaceCurrentOccurrence', e)
+      replaceSummary.value = 'Replace here failed. Check console for details.'
+    }
+  }
+
+  function setPreviewMatchState(index, count) {
+    currentPreviewMatchIndex.value = Number.isFinite(index) ? index : -1
+    currentPreviewMatchCount.value = Number.isFinite(count) ? count : 0
+  }
+
+  async function exportResultsAsJson() {
     if (!results.value.length) return
+    const { save } = await import('@tauri-apps/plugin-dialog')
+    const filePath = await save({
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      defaultPath: `repogrep-results-${Date.now()}.json`,
+    })
+    if (!filePath) return
+
     const payload = {
       query: searchQuery.value,
       caseSensitive: caseSensitive.value,
@@ -276,16 +362,25 @@ export const useAppStore = defineStore('app', () => {
       generatedAt: new Date().toISOString(),
       results: results.value,
     }
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `repogrep-results-${Date.now()}.json`
-    a.click()
-    URL.revokeObjectURL(a.href)
+    try {
+      await invoke('write_to_file', {
+        path: filePath,
+        content: JSON.stringify(payload, null, 2),
+      })
+    } catch (e) {
+      console.error('exportResultsAsJson', e)
+    }
   }
 
-  function exportResultsAsCsv() {
+  async function exportResultsAsCsv() {
     if (!results.value.length) return
+    const { save } = await import('@tauri-apps/plugin-dialog')
+    const filePath = await save({
+      filters: [{ name: 'CSV', extensions: ['csv'] }],
+      defaultPath: `repogrep-results-${Date.now()}.csv`,
+    })
+    if (!filePath) return
+
     const escapeCsv = (value) => {
       const s = String(value ?? '')
       if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
@@ -300,12 +395,14 @@ export const useAppStore = defineStore('app', () => {
       (r.lines || []).join(';'),
     ])
     const csv = [header, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `repogrep-results-${Date.now()}.csv`
-    a.click()
-    URL.revokeObjectURL(a.href)
+    try {
+      await invoke('write_to_file', {
+        path: filePath,
+        content: csv,
+      })
+    } catch (e) {
+      console.error('exportResultsAsCsv', e)
+    }
   }
 
   return {
@@ -315,6 +412,7 @@ export const useAppStore = defineStore('app', () => {
     searchQuery,
     caseSensitive,
     isRegex,
+    treeView,
     results,
     selectedIndex,
     selectedResult,
@@ -328,6 +426,8 @@ export const useAppStore = defineStore('app', () => {
     searchHistory,
     replaceText,
     replaceSummary,
+    currentPreviewMatchIndex,
+    currentPreviewMatchCount,
     loadPaths,
     addProjectPath,
     removeProjectPath,
@@ -342,10 +442,16 @@ export const useAppStore = defineStore('app', () => {
     selectResult,
     selectResultByFilePath,
     setSearchQuery,
+    toggleCaseSensitive,
+    toggleIsRegex,
+    toggleTreeView,
     openSelectedFileInEditor,
     clearSearchHistory,
     exportResultsAsJson,
     exportResultsAsCsv,
     replaceMatchesInResults,
+    replaceInCurrentFile,
+    replaceCurrentOccurrence,
+    setPreviewMatchState,
   }
 })

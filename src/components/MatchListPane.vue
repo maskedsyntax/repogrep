@@ -13,7 +13,6 @@ const progressPercent = computed(() => {
   return Math.min(100, Math.round((processed / total) * 100))
 })
 const hasSearchStats = computed(() => !store.loading && !!store.searchQuery && store.searchDurationMs > 0)
-const treeView = ref(false)
 const collapsedFolders = ref({})
 
 function matchCount(r) {
@@ -21,7 +20,7 @@ function matchCount(r) {
 }
 
 const { list: virtualList, containerProps, wrapperProps } = useVirtualList(list, {
-  itemHeight: 52,
+  itemHeight: 88,
   overscan: 10,
 })
 const treeRows = computed(() => {
@@ -155,9 +154,9 @@ onUnmounted(() => {
           type="button"
           class="btn-head"
           :disabled="list.length === 0"
-          @click="treeView = !treeView"
+          @click="store.toggleTreeView"
         >
-          {{ treeView ? 'List' : 'Tree' }}
+          {{ store.treeView ? 'List' : 'Tree' }}
         </button>
         <button
           type="button"
@@ -190,7 +189,7 @@ onUnmounted(() => {
       <p v-if="store.searchQuery">No files contain this snippet.</p>
       <p v-else>Paste a snippet and press Search.</p>
     </div>
-    <div v-else-if="!treeView" v-bind="containerProps" class="list-container">
+    <div v-else-if="!store.treeView" v-bind="containerProps" class="list-container">
       <div v-bind="wrapperProps" class="list-wrapper">
         <div
           v-for="{ data: r, index } in virtualList"
@@ -199,9 +198,22 @@ onUnmounted(() => {
           :class="{ active: store.selectedIndex === index }"
           @click="store.selectResult(index)"
         >
-          <span class="root-hint">{{ r.root_hint }}</span>
-          <span class="relative-path">{{ r.relative_path }}</span>
-          <span class="line-info">{{ matchCount(r) }} match{{ matchCount(r) !== 1 ? 'es' : '' }}</span>
+          <div class="list-item-main">
+            <span class="root-hint">{{ r.root_hint }}</span>
+            <span class="relative-path">{{ r.relative_path }}</span>
+            <span class="line-info">{{ matchCount(r) }} match{{ matchCount(r) !== 1 ? 'es' : '' }}</span>
+          </div>
+          <div v-if="r.context" class="context-snippets">
+            <div
+              v-for="ctx in r.context.slice(0, 3)"
+              :key="ctx.line_number"
+              class="context-line"
+              :class="{ 'context-match': ctx.is_match }"
+            >
+              <span class="context-num">{{ ctx.line_number }}</span>
+              <span class="context-txt">{{ ctx.content }}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -388,13 +400,50 @@ onUnmounted(() => {
 .list-item {
   display: flex;
   flex-direction: column;
-  gap: 2px;
   padding: 10px 16px;
-  min-height: 52px;
+  min-height: 88px;
   box-sizing: border-box;
   cursor: pointer;
   border-left: 3px solid transparent;
   transition: background 0.12s, border-color 0.12s;
+  overflow: hidden;
+}
+.list-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.context-snippets {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0.85;
+}
+.context-line {
+  display: flex;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: pre;
+  color: var(--text-muted);
+}
+.context-match {
+  color: var(--text);
+  font-weight: 500;
+  background: color-mix(in srgb, var(--accent-subtle) 40%, transparent);
+}
+.context-num {
+  width: 24px;
+  text-align: right;
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--text-muted) 50%, transparent);
+}
+.context-txt {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .list-item:hover {
   background: var(--bg-hover);

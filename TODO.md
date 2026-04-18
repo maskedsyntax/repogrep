@@ -18,3 +18,17 @@
 - [x] **Performance Stats:** Display "Time taken" and "Total files scanned" after each search.
 - [x] **Export Results:** Add an option to export the match list as JSON or CSV.
 - [x] **Find & Replace:** Implement basic multi-file search and replace functionality.
+
+## 🛠 Robustness & Testing
+- [x] **Frontend Tests:** Add unit tests for the Pinia store and component tests for the UI logic.
+- [x] **Backend Tests:** Add robust unit tests for the search logic using temporary directories.
+- [x] **Standard `.gitignore` Support:** Switch to the `ignore` crate for industry-standard performance and accuracy.
+
+## 🚀 Future Roadmap (Completed!)
+- [x] **Context Lines:** Added the ability to show lines of context around matches.
+- [x] **Binary File Detection:** Added content-based binary detection.
+- [x] **Settings Persistence:** UI toggles persist across restarts.
+- [x] **CI/CD Pipeline:** Set up GitHub Actions for tests and releases.
+- [x] **Documentation:** Expanded README.md with usage and architectural info.
+- [ ] **Advanced Filtering:** Support for filtering results by file size, modification date, or depth.
+- [ ] **Syntax Highlighting Improvements:** Auto-detection for more languages or more refined themes.

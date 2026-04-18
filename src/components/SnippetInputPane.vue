@@ -153,17 +153,19 @@ function handleAddExtension() {
       <div class="options-grid">
         <label class="option-row">
           <input
-            v-model="store.caseSensitive"
+            :checked="store.caseSensitive"
             type="checkbox"
             class="checkbox"
+            @change="store.toggleCaseSensitive"
           />
           <span class="option-label">Case sensitive</span>
         </label>
         <label class="option-row">
           <input
-            v-model="store.isRegex"
+            :checked="store.isRegex"
             type="checkbox"
             class="checkbox"
+            @change="store.toggleIsRegex"
           />
           <span class="option-label">Use Regex</span>
         </label>
@@ -198,6 +200,22 @@ function handleAddExtension() {
             class="input-mini replace-input"
             placeholder="Replacement text"
           />
+          <button
+            type="button"
+            class="btn-replace"
+            :disabled="!store.selectedFilePath || store.currentPreviewMatchIndex < 0"
+            @click="store.replaceCurrentOccurrence"
+          >
+            Replace Here
+          </button>
+          <button
+            type="button"
+            class="btn-replace"
+            :disabled="!store.selectedFilePath"
+            @click="store.replaceInCurrentFile"
+          >
+            Replace File
+          </button>
           <button type="button" class="btn-replace" @click="store.replaceMatchesInResults">
             Replace All
           </button>
@@ -568,6 +586,10 @@ function handleAddExtension() {
   font-size: 12px;
   padding: 0 10px;
   cursor: pointer;
+}
+.btn-replace:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .replace-summary {
   margin: 8px 0 0;
